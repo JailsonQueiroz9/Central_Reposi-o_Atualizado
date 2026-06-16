@@ -1,11 +1,36 @@
-<div align="center">
+# Sistema de Controle de PCP
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+Sistema moderno para Planejamento e Controle de Produção integrado ao Google Sheets.
 
-  <h1>Built with AI Studio</h2>
+## 🚀 Início Rápido
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+1. Clone o repositório.
+2. Instale as dependências: `npm install`.
+3. Configure o arquivo `.env` com as credenciais do Google.
+4. Execute o servidor de desenvolvimento: `npm run dev`.
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
+## 📂 Documentação Detalhada
 
-</div>
+Para informações completas sobre a arquitetura, tecnologias e funcionamento do sistema, consulte o arquivo:
+
+👉 **[DOCUMENTATION.md](./DOCUMENTATION.md)**
+
+## ✨ Funcionalidades
+
+- Dashboard de Indicadores em Tempo Real.
+- Gestão de Ordens de Produção (CRUD).
+- Integração com Scanners de Código de Barras.
+- Sistema de Cache e Redundância de Dados.
+- Interface Responsiva e Animada.
+
+## 🛠️ Tecnologias
+
+- **Next.js 15**
+- **TypeScript**
+- **Tailwind CSS**
+- **Google Sheets API**
+- **Motion (Framer Motion)**
+
+---
+
+Desenvolvido para otimização de processos industriais.
