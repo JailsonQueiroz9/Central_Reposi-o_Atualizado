@@ -162,6 +162,7 @@ export default function Almox() {
               <thead>
                 <tr className="bg-gray-50 text-gray-500 text-[10px] uppercase tracking-widest font-black border-b border-gray-100">
                   <th className="px-6 py-4">Status</th>
+                  <th className="px-6 py-4">Prioridade</th>
                   <th className="px-6 py-4">Ordem / Ord_Rep</th>
                   <th className="px-6 py-4">Produto / Descrição</th>
                   <th className="px-6 py-4">Setor</th>
@@ -181,6 +182,9 @@ export default function Almox() {
                     >
                       <td className="px-6 py-4">
                         <StatusBadge status={item.Status} item={item} />
+                      </td>
+                      <td className="px-6 py-4">
+                        <PriorityBadge priority={item.ordem_prioridade} />
                       </td>
                       <td className="px-6 py-4">
                         <div className="text-sm font-bold text-gray-800">{item.Ordem}</div>
@@ -273,3 +277,31 @@ function StatusBadge({ status, item }: { status: string; item?: any }) {
     </span>
   );
 }
+
+function PriorityBadge({ priority }: { priority: string }) {
+  const p = String(priority || '').trim().toLowerCase();
+  
+  let colors = 'bg-gray-100 text-gray-500 border-gray-200';
+  let label = p ? p.toUpperCase() : 'NORMAL';
+  
+  if (p === 'alta') {
+    colors = 'bg-red-100 text-red-700 border-red-200 font-extrabold';
+  } else if (p === 'média' || p === 'media') {
+    colors = 'bg-orange-100 text-orange-700 border-orange-200';
+  } else if (p === 'baixa') {
+    colors = 'bg-blue-100 text-blue-700 border-blue-200';
+  } else if (p === 'embarque') {
+    colors = 'bg-amber-100 text-amber-850 border-amber-250 font-black';
+    label = 'EMBARQUE ✈️';
+  } else {
+    colors = 'bg-gray-50 text-gray-400 border-gray-200';
+    label = 'NORMAL';
+  }
+
+  return (
+    <span className={`inline-block px-2.5 py-0.5 text-[9px] font-bold rounded-md border tracking-wider uppercase ${colors}`}>
+      {label}
+    </span>
+  );
+}
+

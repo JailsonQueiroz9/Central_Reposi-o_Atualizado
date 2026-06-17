@@ -258,6 +258,17 @@ export default function CadastroEntrega() {
                 </div>
               </div>
 
+              <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 flex flex-col justify-center">
+                <div className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">
+                  <Activity size={14} /> Prioridade
+                </div>
+                <div className="text-base font-medium text-gray-800 min-h-[1.5rem]">
+                  {selectedItem ? (
+                    <PriorityBadge priority={selectedItem.ordem_prioridade} />
+                  ) : '-'}
+                </div>
+              </div>
+
             </div>
           </div>
 
@@ -309,6 +320,7 @@ export default function CadastroEntrega() {
                   <thead>
                     <tr className="text-gray-600 text-xs uppercase tracking-wider">
                       <th className="p-4 font-bold border-b border-gray-200 bg-gray-50 sticky top-0 z-10">Selecionar</th>
+                      <th className="p-4 font-bold border-b border-gray-200 bg-gray-50 sticky top-0 z-10">Prioridade</th>
                       <th className="p-4 font-bold border-b border-gray-200 bg-gray-50 sticky top-0 z-10">Ord_Rep</th>
                       <th className="p-4 font-bold border-b border-gray-200 bg-gray-50 sticky top-0 z-10">Produto</th>
                       <th className="p-4 font-bold border-b border-gray-200 bg-gray-50 sticky top-0 z-10">Descrição</th>
@@ -331,6 +343,9 @@ export default function CadastroEntrega() {
                             onChange={() => setSelectedItem(item)}
                             className="w-4 h-4 text-blue-600"
                           />
+                        </td>
+                        <td className="p-4">
+                          <PriorityBadge priority={item.ordem_prioridade} />
                         </td>
                         <td className="p-4 text-sm font-medium text-gray-800">{item.Ord_Rep}</td>
                         <td className="p-4 text-sm text-gray-600">{item.Produtos}</td>
@@ -396,5 +411,32 @@ export default function CadastroEntrega() {
         </div>
       </div>
     </div>
+  );
+}
+
+function PriorityBadge({ priority }: { priority: string }) {
+  const p = String(priority || '').trim().toLowerCase();
+  
+  let colors = 'bg-gray-100 text-gray-500 border-gray-200';
+  let label = p ? p.toUpperCase() : 'NORMAL';
+  
+  if (p === 'alta') {
+    colors = 'bg-red-100 text-red-700 border-red-200 font-extrabold';
+  } else if (p === 'média' || p === 'media') {
+    colors = 'bg-orange-100 text-orange-700 border-orange-200';
+  } else if (p === 'baixa') {
+    colors = 'bg-blue-100 text-blue-700 border-blue-200';
+  } else if (p === 'embarque') {
+    colors = 'bg-amber-100 text-amber-850 border-amber-250 font-black';
+    label = 'EMBARQUE ✈️';
+  } else {
+    colors = 'bg-gray-50 text-gray-400 border-gray-200';
+    label = 'NORMAL';
+  }
+
+  return (
+    <span className={`inline-block px-2.5 py-0.5 text-[9px] font-bold rounded-md border tracking-wider uppercase ${colors}`}>
+      {label}
+    </span>
   );
 }
