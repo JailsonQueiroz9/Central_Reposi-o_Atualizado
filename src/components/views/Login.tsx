@@ -68,7 +68,7 @@ export default function Login({ onLogin, onGoToRegister }: { onLogin: () => void
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-red-800 focus:border-red-800 outline-none transition-colors"
+                className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-red-800 focus:border-red-800 outline-none transition-colors bg-white text-gray-900"
                 placeholder="seu@email.com"
                 required
               />
@@ -85,7 +85,7 @@ export default function Login({ onLogin, onGoToRegister }: { onLogin: () => void
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-red-800 focus:border-red-800 outline-none transition-colors"
+                className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-red-800 focus:border-red-800 outline-none transition-colors bg-white text-gray-900"
                 placeholder="••••••••"
                 required
               />
