@@ -23,7 +23,8 @@ import {
   Download,
   Info,
   Eye,
-  EyeOff
+  EyeOff,
+  GripVertical
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { dataCache } from '@/lib/cache';
@@ -64,17 +65,17 @@ const PCP_COLUMNS = [
   "CONTRAFORT",
   "ATACADOR",
   "ENV AVIAMENTO",
-  "POSTE",
+  "PONTE",
   "AUTOMATICO",
   "LECTRA",
   "REC SUPER",
-  "KANBAN APOLO",
+  "KANBAN APOIO",
   "SERIG CARROSSEL",
   "DATA M2",
   "DATA AVIAMENTOS",
-  "DATA SERIGRAFIA",
-  "INICIO CORTE / CORTE AUTO",
+  "DATA CORTE / CORTE AUTOMATICO ",
   "DATA SUPERMERCADO",
+  "DATA SERIGRAFIA",
   "DATA ORIGINAL",
   "TIPO DE MATERIAL",
   "\"RETORNO\" ALINHAMENTO",
@@ -117,6 +118,79 @@ const formatDateString = (valStr: string): string => {
   }
 
   return valStr;
+};
+
+// Function to subtract working days (Monday-Saturday, skipping Sundays)
+// Note: Sunday is index 0 in Javascript getDay()
+const calculateRetroDates = (originalDateStr: string): { [key: string]: string } => {
+  const parseDate = (str: string): Date | null => {
+    if (!str) return null;
+    const trimmed = str.trim();
+    const match = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (match) {
+      const [_, d, m, y] = match;
+      return new Date(Number(y), Number(m) - 1, Number(d));
+    }
+    const matchYMD = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (matchYMD) {
+      const [_, y, m, d] = matchYMD;
+      return new Date(Number(y), Number(m) - 1, Number(d));
+    }
+    const parsed = Date.parse(trimmed);
+    if (!isNaN(parsed)) return new Date(parsed);
+    return null;
+  };
+
+  const formatDate = (d: Date): string => {
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
+  };
+
+  const subtractWorkDays = (start: Date, numDays: number): Date => {
+    let d = new Date(start);
+    let count = 0;
+    while (count < numDays) {
+      d.setDate(d.getDate() - 1);
+      if (d.getDay() !== 0) { // skip Sunday
+        count++;
+      }
+    }
+    return d;
+  };
+
+  const baseDate = parseDate(originalDateStr);
+  if (!baseDate) return {};
+
+  const serigrafiaDate = subtractWorkDays(baseDate, 1);
+  const supermercadoDate = subtractWorkDays(baseDate, 2);
+  const corteDate = subtractWorkDays(baseDate, 3);
+  const aviamentosDate = subtractWorkDays(baseDate, 4);
+  const m2Date = subtractWorkDays(baseDate, 4); // same as aviamentos (4 work days retroactive)
+
+  return {
+    "DATA SERIGRAFIA": formatDate(serigrafiaDate),
+    "DATA SUPERMERCADO": formatDate(supermercadoDate),
+    "DATA CORTE / CORTE AUTO": formatDate(corteDate),
+    "DATA AVIAMENTOS": formatDate(aviamentosDate),
+    "DATA M2": formatDate(m2Date)
+  };
+};
+
+const setFieldsWithNormalization = (obj: any, fields: { [key: string]: string }) => {
+  for (const [colTitle, value] of Object.entries(fields)) {
+    let foundKey = colTitle;
+    const normTitle = colTitle.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+    for (const actualKey of Object.keys(obj)) {
+      const normActual = actualKey.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+      if (normTitle === normActual || (normTitle.includes("corte") && normActual.includes("corte"))) {
+        foundKey = actualKey;
+        break;
+      }
+    }
+    obj[foundKey] = value;
+  }
 };
 
 // Helper to look up values inside the item object with case-insensitive and accent-insensitive key fallback
@@ -274,11 +348,27 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
   
   // Custom filter states
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedWeek, setSelectedWeek] = useState('TODAS');
-  const [selectedBrand, setSelectedBrand] = useState('TODAS');
-  const [selectedStatusOper, setSelectedStatusOper] = useState('TODOS');
-  const [selectedLine, setSelectedLine] = useState('TODAS');
+  const [selectedWeeks, setSelectedWeeks] = useState<string[]>([]);
+  const [showWeekSelector, setShowWeekSelector] = useState(false);
+  const weekSelectorRef = useRef<HTMLDivElement>(null);
+
+  const [selectedBrands, setSelectedBrands] = useState<string[]>([]);
+  const [showBrandSelector, setShowBrandSelector] = useState(false);
+  const brandSelectorRef = useRef<HTMLDivElement>(null);
+
+  const [selectedStatusOpers, setSelectedStatusOpers] = useState<string[]>([]);
+  const [showStatusSelector, setShowStatusSelector] = useState(false);
+  const statusSelectorRef = useRef<HTMLDivElement>(null);
+
+  const [selectedLines, setSelectedLines] = useState<string[]>([]);
+  const [showLineSelector, setShowLineSelector] = useState(false);
+  const lineSelectorRef = useRef<HTMLDivElement>(null);
+
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+
+  // States for row dragging reorder
+  const [draggedRowId, setDraggedRowId] = useState<string | null>(null);
+  const [dragOverRowId, setDragOverRowId] = useState<string | null>(null);
   
   // Save Feedback
   const [savingItem, setSavingItem] = useState<string | null>(null);
@@ -300,11 +390,23 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
   const [columnSearch, setColumnSearch] = useState('');
   const columnSelectorRef = useRef<HTMLDivElement>(null);
 
-  // Click outside to close column selector dropdown
+  // Click outside to close column selector and other dropdowns
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (columnSelectorRef.current && !columnSelectorRef.current.contains(event.target as Node)) {
         setShowColumnSelector(false);
+      }
+      if (weekSelectorRef.current && !weekSelectorRef.current.contains(event.target as Node)) {
+        setShowWeekSelector(false);
+      }
+      if (brandSelectorRef.current && !brandSelectorRef.current.contains(event.target as Node)) {
+        setShowBrandSelector(false);
+      }
+      if (statusSelectorRef.current && !statusSelectorRef.current.contains(event.target as Node)) {
+        setShowStatusSelector(false);
+      }
+      if (lineSelectorRef.current && !lineSelectorRef.current.contains(event.target as Node)) {
+        setShowLineSelector(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -338,13 +440,13 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
   useEffect(() => {
     if (setHeaderContent) {
       setHeaderContent(
-        <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 w-full select-none text-slate-100">
+        <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-2.5 w-full select-none text-slate-100 py-1">
           <div className="min-w-0 flex-1">
-            <h1 className="text-sm md:text-base lg:text-lg font-black text-amber-450 tracking-tight flex items-center gap-2">
-              <CalendarClock className="text-amber-500 flex-shrink-0 animate-pulse" size={20} />
-              <span className="truncate">Programação PCP — Controle de Linhas & Oficinas</span>
+            <h1 className="text-sm md:text-base lg:text-lg font-black text-amber-400 tracking-tight flex items-center gap-2">
+              <CalendarClock className="text-amber-500 flex-shrink-0 animate-pulse" size={18} />
+              <span className="truncate">PCP — Plano de Corte {new Date().getFullYear()}</span>
             </h1>
-            <p className="text-slate-400 text-[10px] md:text-[11px] mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis max-w-full" title="Gargalos operacionais, Follow-up de materiais, datas de embarque e liberação de corte.">
+            <p className="text-slate-400 text-[10px] md:text-[10.5px] mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis max-w-full font-medium" title="Gargalos operacionais, Follow-up de materiais, datas de embarque e liberação de corte.">
               Gargalos operacionais, Follow-up de materiais, datas de embarque e liberação de corte.
             </p>
           </div>
@@ -352,7 +454,7 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
             <button 
               id="toggle-header-panels-btn"
               onClick={() => setHideHeaderPanels(prev => !prev)}
-              className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-[10px] md:text-[11px] font-bold transition-all border shadow-sm ${
+              className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 text-[10px] md:text-[11px] font-bold transition-all border shadow-sm cursor-pointer ${
                 hideHeaderPanels 
                   ? 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/30' 
                   : 'bg-slate-800 hover:bg-slate-700 border-slate-705 text-slate-100'
@@ -360,13 +462,13 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
             >
               {hideHeaderPanels ? <Eye size={12} /> : <EyeOff size={12} />}
               <span>{hideHeaderPanels ? "Mostrar Painel" : "Ocultar Painel"}</span>
-              {hideHeaderPanels && (searchTerm !== '' || selectedWeek !== 'TODAS' || selectedBrand !== 'TODAS' || selectedStatusOper !== 'TODOS' || selectedLine !== 'TODAS') && (
+              {hideHeaderPanels && (searchTerm !== '' || selectedWeeks.length > 0 || selectedBrands.length > 0 || selectedStatusOpers.length > 0 || selectedLines.length > 0) && (
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse ml-0.5" title="Filtros estão ativos!" />
               )}
             </button>
             <button 
               onClick={handleExportCSV}
-              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-705 text-slate-100 rounded-lg flex items-center gap-1.5 text-[10px] md:text-[11px] font-bold transition-all shadow-md"
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-705 text-slate-100 rounded-lg flex items-center gap-1.5 text-[10px] md:text-[11px] font-bold transition-all shadow-md cursor-pointer"
             >
               <Download size={12} />
               Exportar Planejamento
@@ -374,10 +476,10 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
             <button 
               onClick={() => fetchWipData(false, true)}
               disabled={loading}
-              className={`px-3 py-1.5 text-amber-950 rounded-lg flex items-center gap-1.5 text-[10px] md:text-[11px] font-black tracking-wider uppercase transition-all shadow-md ${
+              className={`px-3 py-1.5 text-amber-950 rounded-lg flex items-center gap-1.5 text-[10px] md:text-[11px] font-black tracking-wider uppercase transition-all shadow-md cursor-pointer ${
                 loading 
                   ? 'bg-amber-500/50 cursor-not-allowed opacity-60' 
-                  : 'bg-amber-550 hover:bg-amber-600 shadow-amber-500/10'
+                  : 'bg-amber-500 hover:bg-amber-600 shadow-amber-500/20'
               }`}
             >
               {loading ? (
@@ -401,7 +503,7 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
         setHeaderContent(null);
       }
     };
-  }, [setHeaderContent, hideHeaderPanels, loading, searchTerm, selectedWeek, selectedBrand, selectedStatusOper, selectedLine]);
+  }, [setHeaderContent, hideHeaderPanels, loading, searchTerm, selectedWeeks, selectedBrands, selectedStatusOpers, selectedLines]);
 
   const visibleColumns = useMemo(() => {
     const list = PCP_COLUMNS.filter(col => !hiddenColumns.includes(col));
@@ -546,6 +648,13 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
           }
         }
         updatedRow[foundKey] = newValue;
+
+        // If updating DATA ORIGINAL, auto recalculate and assign retroactive dates!
+        if (normTitle === "data original") {
+          const calculated = calculateRetroDates(newValue);
+          setFieldsWithNormalization(updatedRow, calculated);
+        }
+
         return updatedRow;
       }
       return row;
@@ -566,6 +675,12 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
         }
       }
       updatedRow[foundKey] = newValue;
+
+      // Keep background save synchronized!
+      if (normTitle === "data original") {
+        const calculated = calculateRetroDates(newValue);
+        setFieldsWithNormalization(updatedRow, calculated);
+      }
       
       await api.post('savePCPData', {
         id: item.id,
@@ -621,16 +736,16 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
   const filteredWip = useMemo(() => {
     return wipItems.filter(item => {
       const itemWk = getVal(item, 'SEMANA PRODUÇÃO') || getVal(item, 'Semana') || '';
-      const matchWeek = selectedWeek === 'TODAS' || itemWk === selectedWeek;
+      const matchWeek = selectedWeeks.length === 0 || selectedWeeks.includes(itemWk);
       
       const itemBrand = getVal(item, 'MARCA') || getVal(item, 'Marca') || '';
-      const matchBrand = selectedBrand === 'TODAS' || itemBrand.toUpperCase() === selectedBrand.toUpperCase();
+      const matchBrand = selectedBrands.length === 0 || selectedBrands.includes(itemBrand);
 
       const itemStatus = getVal(item, 'STATUS DA OPERAÇÃO') || getVal(item, 'Status') || '';
-      const matchStatus = selectedStatusOper === 'TODOS' || itemStatus === selectedStatusOper;
+      const matchStatus = selectedStatusOpers.length === 0 || selectedStatusOpers.includes(itemStatus);
 
       const itemLine = getVal(item, 'LINHA / FÁBRICA') || '';
-      const matchLine = selectedLine === 'TODAS' || itemLine === selectedLine;
+      const matchLine = selectedLines.length === 0 || selectedLines.includes(itemLine);
       
       const term = searchTerm.toLowerCase().trim();
       const matchSearch = !term ||
@@ -642,7 +757,7 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
 
       return matchWeek && matchBrand && matchStatus && matchLine && matchSearch;
     });
-  }, [wipItems, selectedWeek, selectedBrand, selectedStatusOper, selectedLine, searchTerm]);
+  }, [wipItems, selectedWeeks, selectedBrands, selectedStatusOpers, selectedLines, searchTerm]);
 
   // Compute stats card totals
   const totals = useMemo(() => {
@@ -712,7 +827,7 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
         "DATA M2": "",
         "DATA AVIAMENTOS": "FALTA SERIGRAFIA",
         "DATA SERIGRAFIA": "1263270 FILME ADES NF 676 09/06 AG ENVIO",
-        "INICIO CORTE / CORTE AUTO": "",
+        "DATA CORTE / CORTE AUTO": "",
         "DATA SUPERMERCADO": "",
         "DATA ORIGINAL": "",
         "TIPO DE MATERIAL": "SINTETICO",
@@ -870,7 +985,8 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.setAttribute("href", url);
-      link.setAttribute("download", `programacao_pcp_semana_${selectedWeek}.csv`);
+      const wkLabel = selectedWeeks.length === 0 ? 'TODAS' : selectedWeeks.join('_');
+      link.setAttribute("download", `programacao_pcp_semana_${wkLabel}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -880,48 +996,53 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
   };
 
   return (
-    <div className="p-4 md:p-6 h-full bg-slate-900 text-slate-100 flex flex-col gap-4 overflow-hidden font-sans">
+    <div className="p-2 md:p-3 h-full bg-slate-900 text-slate-100 flex flex-col gap-2 overflow-hidden font-sans">
       {/* Title block */}
       {!setHeaderContent && (
-        <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 bg-slate-800/60 p-4 rounded-xl border border-slate-700/60 shadow-lg flex-shrink-0">
+        <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-2.5 bg-slate-800/60 p-2.5 px-3.5 rounded-lg border border-slate-700/55 shadow-md flex-shrink-0">
           <div className="min-w-0 flex-1">
-            <h1 className="text-lg md:text-xl lg:text-2xl font-black text-amber-450 tracking-tight flex items-center gap-2.5">
-              <CalendarClock className="text-amber-500 flex-shrink-0 animate-pulse" size={26} />
-              <span className="truncate">Programação PCP — Controle de Linhas & Oficinas</span>
+            <h1 className="text-sm md:text-base font-black text-amber-400 tracking-tight flex items-center gap-2">
+              <CalendarClock className="text-amber-500 flex-shrink-0 animate-pulse" size={18} />
+              <span className="truncate">PCP — Plano de Corte {new Date().getFullYear()}</span>
             </h1>
-            <p className="text-slate-400 text-xs mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis max-w-full" title="Gargalos operacionais, Follow-up de materiais, datas de embarque e liberação de corte.">
+            <p className="text-slate-400 text-[10px] md:text-[10.5px] mt-0.5 whitespace-nowrap overflow-hidden text-ellipsis max-w-full font-medium" title="Gargalos operacionais, Follow-up de materiais, datas de embarque e liberação de corte.">
               Gargalos operacionais, Follow-up de materiais, datas de embarque e liberação de corte.
             </p>
           </div>
-          <div className="flex flex-row flex-wrap items-center gap-2 flex-shrink-0">
+          <div className="flex flex-row flex-wrap items-center gap-1.5 flex-shrink-0">
             <button 
               id="toggle-header-panels-btn"
               onClick={() => setHideHeaderPanels(!hideHeaderPanels)}
-              className={`px-3 py-2 rounded-lg flex items-center gap-1.5 text-xs font-bold transition-all border shadow-md ${
+              className={`px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 text-[10.5px] md:text-xs font-bold transition-all border shadow-sm cursor-pointer ${
                 hideHeaderPanels 
-                  ? 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/30 shadow-amber-500/5' 
+                  ? 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/30' 
                   : 'bg-slate-700 hover:bg-slate-600 border-slate-600 text-slate-100'
               }`}
             >
-              {hideHeaderPanels ? <Eye size={13} /> : <EyeOff size={13} />}
+              {hideHeaderPanels ? <Eye size={12} /> : <EyeOff size={12} />}
               <span>{hideHeaderPanels ? "Mostrar Painel" : "Ocultar Painel"}</span>
-              {hideHeaderPanels && (searchTerm !== '' || selectedWeek !== 'TODAS' || selectedBrand !== 'TODAS' || selectedStatusOper !== 'TODOS' || selectedLine !== 'TODAS') && (
+              {hideHeaderPanels && (searchTerm !== '' || selectedWeeks.length > 0 || selectedBrands.length > 0 || selectedStatusOpers.length > 0 || selectedLines.length > 0) && (
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse ml-0.5" title="Filtros estão ativos!" />
               )}
             </button>
             <button 
               onClick={handleExportCSV}
-              className="px-3 py-2 bg-slate-700 hover:bg-slate-600 border border-slate-600 text-slate-100 rounded-lg flex items-center gap-1.5 text-xs font-bold transition-all shadow-md"
+              className="px-2.5 py-1.5 bg-slate-705 hover:bg-slate-600 border border-slate-600 text-slate-100 rounded-lg flex items-center gap-1.5 text-[10.5px] md:text-xs font-bold transition-all shadow-md cursor-pointer"
             >
-              <Download size={13} />
+              <Download size={12} />
               Exportar Planejamento
             </button>
             <button 
               onClick={() => fetchWipData(false, true)}
-              className="px-3 py-2 bg-amber-550 hover:bg-amber-600 text-amber-950 rounded-lg flex items-center gap-1.5 text-xs font-black tracking-wider uppercase transition-all shadow-md shadow-amber-500/10"
+              disabled={loading}
+              className={`px-2.5 py-1.5 text-amber-950 rounded-lg flex items-center gap-1.25 text-[10.5px] md:text-xs font-black tracking-wider uppercase transition-all shadow-md cursor-pointer ${
+                loading 
+                  ? 'bg-amber-500/50 cursor-not-allowed opacity-60' 
+                  : 'bg-amber-500 hover:bg-amber-605 shadow-amber-500/20'
+              }`}
             >
-              <RefreshCcw size={13} className={loading ? 'animate-spin' : ''} />
-              Sincronizar Planilha
+              <RefreshCcw size={12} className={loading ? 'animate-spin' : ''} />
+              <span>Sincronizar Planilha</span>
             </button>
           </div>
         </div>
@@ -936,41 +1057,41 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
 
       {/* Grid of KPIs */}
       {!hideHeaderPanels && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
         {/* KPI 1 */}
-        <div className="bg-slate-850 rounded-xl border border-slate-700/60 p-5 shadow-md flex items-center gap-4">
-          <div className="p-3 bg-amber-500/10 text-amber-500 rounded-lg">
-            <TableProperties size={24} />
+        <div className="bg-slate-850 rounded-lg border border-slate-705/85 p-2 px-3 shadow-sm flex items-center gap-3">
+          <div className="p-2 bg-amber-500/10 text-amber-500 rounded-md">
+            <TableProperties size={18} />
           </div>
           <div>
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Ordens Filtradas</p>
-            <p className="text-2xl font-black text-white">{totals.totalOrders} <span className="text-xs text-slate-400 font-normal">OPs</span></p>
+            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest leading-none">Ordens Filtradas</p>
+            <p className="text-base font-black text-white mt-0.5">{totals.totalOrders} <span className="text-[10px] text-slate-400 font-normal">OPs</span></p>
           </div>
         </div>
 
         {/* KPI 2 */}
-        <div className="bg-slate-850 rounded-xl border border-slate-700/60 p-5 shadow-md flex items-center gap-4">
-          <div className="p-3 bg-cyan-500/10 text-cyan-400 rounded-lg">
-            <Layers size={24} />
+        <div className="bg-slate-850 rounded-lg border border-slate-705/85 p-2 px-3 shadow-sm flex items-center gap-3">
+          <div className="p-2 bg-cyan-500/10 text-cyan-400 rounded-md">
+            <Layers size={18} />
           </div>
           <div>
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Volume (Pares)</p>
-            <p className="text-2xl font-black text-cyan-300">
-              {totals.totalQty.toLocaleString('pt-BR')} <span className="text-xs text-slate-400 font-normal">PARES</span>
+            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest leading-none">Volume (Pares)</p>
+            <p className="text-base font-black text-cyan-300 mt-0.5">
+              {totals.totalQty.toLocaleString('pt-BR')} <span className="text-[10px] text-slate-400 font-normal">PARES</span>
             </p>
           </div>
         </div>
 
         {/* KPI 3 */}
-        <div className="bg-slate-850 rounded-xl border border-slate-700/60 p-5 shadow-md flex items-center gap-4 md:col-span-2">
-          <div className="p-3 bg-violet-500/10 text-violet-400 rounded-lg">
-            <BarChart3 size={24} />
+        <div className="bg-slate-850 rounded-lg border border-slate-705/85 p-2 px-3 shadow-sm flex items-center gap-3 md:col-span-2">
+          <div className="p-2 bg-violet-500/10 text-violet-400 rounded-md">
+            <BarChart3 size={18} />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Distribuição por Marca</p>
-            <div className="flex gap-2 flex-wrap mt-1.5 overflow-x-auto pb-1 max-h-[44px]">
+            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest leading-none">Distribuição por Marca</p>
+            <div className="flex gap-1.5 flex-wrap mt-0.5 overflow-x-auto max-h-[36px]">
               {Object.keys(totals.brandLoads).map(brand => (
-                <span key={brand} className="text-[10px] bg-slate-800 text-amber-300 px-2 py-0.5 rounded font-black uppercase border border-slate-700">
+                <span key={brand} className="text-[9px] bg-slate-800 text-amber-300 px-1.5 py-0.5 rounded font-black uppercase border border-slate-700/60 leading-none">
                   {brand}: {totals.brandLoads[brand].toLocaleString('pt-BR')} px
                 </span>
               ))}
@@ -983,83 +1104,295 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
 
       {/* Table Filters Pivot Controller */}
       {!hideHeaderPanels && (
-        <div className="bg-slate-850 rounded-xl border border-slate-700/60 p-5 flex flex-col gap-4 shadow-lg">
-        <div className="flex items-center gap-2 border-b border-slate-700/50 pb-2">
-          <SlidersHorizontal className="text-amber-500" size={16} />
-          <h2 className="text-xs font-black uppercase tracking-wider text-slate-200">Painel de Filtros e Segmentação PCP</h2>
+        <div className="bg-slate-850 rounded-lg border border-slate-705/85 p-2.5 flex flex-col gap-2 shadow-md">
+        <div className="flex items-center gap-1.5 border-b border-slate-700/40 pb-1.5">
+          <SlidersHorizontal className="text-amber-500" size={13} />
+          <h2 className="text-[10px] font-black uppercase tracking-wider text-slate-300">Painel de Filtros e Segmentação PCP</h2>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
           {/* Filter search */}
           <div className="relative">
-            <Search className="absolute left-3 top-2.5 text-slate-400" size={16} />
+            <Search className="absolute left-2.5 top-2 text-slate-400" size={14} />
             <input
               type="text"
               placeholder="Buscar por lote, modelo, OP..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-700 hover:border-slate-600 rounded-lg pl-9 pr-3 py-2 text-xs text-slate-100 outline-none focus:ring-1 focus:ring-amber-550 transition-all placeholder:text-slate-500"
+              className="w-full bg-slate-900 border border-slate-700 hover:border-slate-600 rounded-lg pl-8 pr-2.5 py-1.5 text-xs text-slate-100 outline-none focus:ring-1 focus:ring-amber-550 transition-all placeholder:text-slate-500 h-[34px]"
             />
           </div>
 
-          {/* Filter Week */}
-          <div className="flex items-center gap-1 bg-slate-900 border border-slate-700 rounded-lg px-2 text-xs">
-            <span className="text-[10px] text-slate-400 font-bold uppercase px-1">Semana:</span>
-            <select
-              value={selectedWeek}
-              onChange={(e) => setSelectedWeek(e.target.value)}
-              className="bg-transparent text-slate-150 py-2 px-1 focus:outline-none w-full font-bold cursor-pointer"
+          {/* Filter Week Multi-Select */}
+          <div className="relative" ref={weekSelectorRef}>
+            <div 
+              onClick={() => setShowWeekSelector(!showWeekSelector)}
+              className="flex items-center justify-between gap-1 bg-slate-900 border border-slate-700 hover:border-slate-600 rounded-lg px-2 text-xs font-bold cursor-pointer h-[34px] select-none"
             >
-              <option value="TODAS" style={{ backgroundColor: '#ffffff', color: '#0f172a' }} className="bg-white text-slate-900">TODAS</option>
-              {weeks.filter(w => w !== 'TODAS').map(wk => (
-                <option key={wk} value={wk} style={{ backgroundColor: '#ffffff', color: '#0f172a' }} className="bg-white text-slate-900">Semana {wk}</option>
-              ))}
-            </select>
+              <div className="flex items-center gap-1 overflow-hidden py-1">
+                <span className="text-[10px] text-slate-400 font-bold uppercase px-0.5 font-sans">Semana:</span>
+                <span className="text-slate-150 truncate max-w-[120px] font-black">
+                  {selectedWeeks.length === 0 
+                    ? "TODAS" 
+                    : selectedWeeks.length === 1 
+                      ? `${selectedWeeks[0]}` 
+                      : `${selectedWeeks.length} Sel.`}
+                </span>
+              </div>
+              <ChevronRight size={13} className={`text-slate-400 transition-transform mr-1 ${showWeekSelector ? 'rotate-90' : ''}`} />
+            </div>
+
+            {showWeekSelector && (
+              <div className="absolute left-0 mt-1.5 w-64 bg-slate-900 border border-slate-700 rounded-lg shadow-xl z-50 p-3 flex flex-col gap-2">
+                <div className="flex justify-between items-center pb-1.5 border-b border-slate-800">
+                  <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wide">Filtrar Semanas</span>
+                  {selectedWeeks.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedWeeks([]);
+                      }}
+                      className="text-[9px] text-amber-400 hover:text-amber-300 underline font-black cursor-pointer uppercase"
+                    >
+                      Limpar
+                    </button>
+                  )}
+                </div>
+                
+                <div className="max-h-48 overflow-y-auto pr-1 select-none flex flex-col bg-slate-950/45 rounded border border-slate-800/60 divide-y divide-slate-805">
+                  {weeks.filter(w => w !== 'TODAS').map((wk) => {
+                    const isChecked = selectedWeeks.includes(wk);
+                    return (
+                      <label 
+                        key={wk} 
+                        className="flex items-center gap-2 py-1.5 px-2 hover:bg-slate-805/60 rounded cursor-pointer transition-colors text-left"
+                      >
+                        <input 
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => {
+                            if (isChecked) {
+                              setSelectedWeeks(selectedWeeks.filter(w => w !== wk));
+                            } else {
+                              setSelectedWeeks([...selectedWeeks, wk].sort());
+                            }
+                          }}
+                          className="rounded border-slate-650 bg-slate-900 text-amber-500 focus:ring-amber-500 h-3.5 w-3.5 cursor-pointer accent-amber-550"
+                        />
+                        <span className="text-[11px] font-bold text-slate-300">
+                          Semana {wk}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Filter Brand */}
-          <div className="flex items-center gap-1 bg-slate-900 border border-slate-700 rounded-lg px-2 text-xs">
-            <span className="text-[10px] text-slate-400 font-bold uppercase px-1">Marca:</span>
-            <select
-              value={selectedBrand}
-              onChange={(e) => setSelectedBrand(e.target.value)}
-              className="bg-transparent text-slate-150 py-2 px-1 focus:outline-none w-full font-bold cursor-pointer"
+          {/* Filter Brand Multi-Select */}
+          <div className="relative" ref={brandSelectorRef}>
+            <div 
+              onClick={() => setShowBrandSelector(!showBrandSelector)}
+              className="flex items-center justify-between gap-1 bg-slate-900 border border-slate-700 hover:border-slate-600 rounded-lg px-2 text-xs font-bold cursor-pointer h-[34px] select-none"
             >
-              <option value="TODAS" style={{ backgroundColor: '#ffffff', color: '#0f172a' }} className="bg-white text-slate-900">TODAS AS MARCAS</option>
-              {brands.filter(b => b !== 'TODAS').map(br => (
-                <option key={br} value={br} style={{ backgroundColor: '#ffffff', color: '#0f172a' }} className="bg-white text-slate-900">{br}</option>
-              ))}
-            </select>
+              <div className="flex items-center gap-1 overflow-hidden py-1">
+                <span className="text-[10px] text-slate-400 font-bold uppercase px-0.5 font-sans">Marca:</span>
+                <span className="text-slate-150 truncate max-w-[120px] font-black">
+                  {selectedBrands.length === 0 
+                    ? "TODAS" 
+                    : selectedBrands.length === 1 
+                      ? `${selectedBrands[0]}` 
+                      : `${selectedBrands.length} Sel.`}
+                </span>
+              </div>
+              <ChevronRight size={13} className={`text-slate-400 transition-transform mr-1 ${showBrandSelector ? 'rotate-90' : ''}`} />
+            </div>
+
+            {showBrandSelector && (
+              <div className="absolute left-0 mt-1.5 w-64 bg-slate-900 border border-slate-700 rounded-lg shadow-xl z-50 p-3 flex flex-col gap-2">
+                <div className="flex justify-between items-center pb-1.5 border-b border-slate-800">
+                  <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wide">Filtrar Marcas</span>
+                  {selectedBrands.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedBrands([]);
+                      }}
+                      className="text-[9px] text-amber-400 hover:text-amber-300 underline font-black cursor-pointer uppercase"
+                    >
+                      Limpar
+                    </button>
+                  )}
+                </div>
+                
+                <div className="max-h-48 overflow-y-auto pr-1 select-none flex flex-col bg-slate-950/45 rounded border border-slate-800/60 divide-y divide-slate-805">
+                  {brands.filter(b => b !== 'TODAS').map((br) => {
+                    const isChecked = selectedBrands.includes(br);
+                    return (
+                      <label 
+                        key={br} 
+                        className="flex items-center gap-2 py-1.5 px-2 hover:bg-slate-805/60 rounded cursor-pointer transition-colors text-left"
+                      >
+                        <input 
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => {
+                            if (isChecked) {
+                              setSelectedBrands(selectedBrands.filter(b => b !== br));
+                            } else {
+                              setSelectedBrands([...selectedBrands, br].sort());
+                            }
+                          }}
+                          className="rounded border-slate-650 bg-slate-900 text-amber-500 focus:ring-amber-500 h-3.5 w-3.5 cursor-pointer accent-amber-550"
+                        />
+                        <span className="text-[11px] font-bold text-slate-300">
+                          {br}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Filter Status Operação */}
-          <div className="flex items-center gap-1 bg-slate-900 border border-slate-700 rounded-lg px-2 text-xs">
-            <span className="text-[10px] text-slate-400 font-bold uppercase px-1">Operação:</span>
-            <select
-              value={selectedStatusOper}
-              onChange={(e) => setSelectedStatusOper(e.target.value)}
-              className="bg-transparent text-slate-150 py-2 px-1 focus:outline-none w-full font-bold cursor-pointer"
+          {/* Filter Status Operacao Multi-Select */}
+          <div className="relative" ref={statusSelectorRef}>
+            <div 
+              onClick={() => setShowStatusSelector(!showStatusSelector)}
+              className="flex items-center justify-between gap-1 bg-slate-900 border border-slate-700 hover:border-slate-600 rounded-lg px-2 text-xs font-bold cursor-pointer h-[34px] select-none"
             >
-              <option value="TODOS" style={{ backgroundColor: '#ffffff', color: '#0f172a' }} className="bg-white text-slate-900">TODOS STATUS</option>
-              {statuses.filter(s => s !== 'TODOS').map(st => (
-                <option key={st} value={st} style={{ backgroundColor: '#ffffff', color: '#0f172a' }} className="bg-white text-slate-900">{st}</option>
-              ))}
-            </select>
+              <div className="flex items-center gap-1 overflow-hidden py-1">
+                <span className="text-[10px] text-slate-400 font-bold uppercase px-0.5 font-sans">Op.:</span>
+                <span className="text-slate-150 truncate max-w-[125px] font-black">
+                  {selectedStatusOpers.length === 0 
+                    ? "TODOS" 
+                    : selectedStatusOpers.length === 1 
+                      ? `${selectedStatusOpers[0]}` 
+                      : `${selectedStatusOpers.length} Sel.`}
+                </span>
+              </div>
+              <ChevronRight size={13} className={`text-slate-400 transition-transform mr-1 ${showStatusSelector ? 'rotate-90' : ''}`} />
+            </div>
+
+            {showStatusSelector && (
+              <div className="absolute left-0 mt-1.5 w-64 bg-slate-900 border border-slate-700 rounded-lg shadow-xl z-50 p-3 flex flex-col gap-2">
+                <div className="flex justify-between items-center pb-1.5 border-b border-slate-800">
+                  <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wide">Filtrar Operações</span>
+                  {selectedStatusOpers.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedStatusOpers([]);
+                      }}
+                      className="text-[9px] text-amber-400 hover:text-amber-300 underline font-black cursor-pointer uppercase"
+                    >
+                      Limpar
+                    </button>
+                  )}
+                </div>
+                
+                <div className="max-h-48 overflow-y-auto pr-1 select-none flex flex-col bg-slate-950/45 rounded border border-slate-800/60 divide-y divide-slate-805">
+                  {statuses.filter(s => s !== 'TODOS').map((st) => {
+                    const isChecked = selectedStatusOpers.includes(st);
+                    return (
+                      <label 
+                        key={st} 
+                        className="flex items-center gap-2 py-1.5 px-2 hover:bg-slate-805/60 rounded cursor-pointer transition-colors text-left"
+                      >
+                        <input 
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => {
+                            if (isChecked) {
+                              setSelectedStatusOpers(selectedStatusOpers.filter(s => s !== st));
+                            } else {
+                              setSelectedStatusOpers([...selectedStatusOpers, st].sort());
+                            }
+                          }}
+                          className="rounded border-slate-650 bg-slate-900 text-amber-500 focus:ring-amber-500 h-3.5 w-3.5 cursor-pointer accent-amber-550"
+                        />
+                        <span className="text-[11px] font-bold text-slate-300">
+                          {st}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Filter Line */}
-          <div className="flex items-center gap-1 bg-slate-900 border border-slate-700 rounded-lg px-2 text-xs">
-            <span className="text-[10px] text-slate-400 font-bold uppercase px-1">Linha:</span>
-            <select
-              value={selectedLine}
-              onChange={(e) => setSelectedLine(e.target.value)}
-              className="bg-transparent text-slate-150 py-2 px-1 focus:outline-none w-full font-bold cursor-pointer"
+          {/* Filter Line Multi-Select */}
+          <div className="relative" ref={lineSelectorRef}>
+            <div 
+              onClick={() => setShowLineSelector(!showLineSelector)}
+              className="flex items-center justify-between gap-1 bg-slate-900 border border-slate-700 hover:border-slate-600 rounded-lg px-2 text-xs font-bold cursor-pointer h-[34px] select-none"
             >
-              <option value="TODAS" style={{ backgroundColor: '#ffffff', color: '#0f172a' }} className="bg-white text-slate-900">TODAS LINHAS</option>
-              {lines.filter(l => l !== 'TODAS').map(ln => (
-                <option key={ln} value={ln} style={{ backgroundColor: '#ffffff', color: '#0f172a' }} className="bg-white text-slate-900">Linha {ln}</option>
-              ))}
-            </select>
+              <div className="flex items-center gap-1 overflow-hidden py-1">
+                <span className="text-[10px] text-slate-400 font-bold uppercase px-0.5 font-sans">Linha:</span>
+                <span className="text-slate-150 truncate max-w-[120px] font-black">
+                  {selectedLines.length === 0 
+                    ? "TODAS" 
+                    : selectedLines.length === 1 
+                      ? `${selectedLines[0]}` 
+                      : `${selectedLines.length} Sel.`}
+                </span>
+              </div>
+              <ChevronRight size={13} className={`text-slate-400 transition-transform mr-1 ${showLineSelector ? 'rotate-90' : ''}`} />
+            </div>
+
+            {showLineSelector && (
+              <div className="absolute left-0 mt-1.5 w-64 bg-slate-900 border border-slate-700 rounded-lg shadow-xl z-50 p-3 flex flex-col gap-2">
+                <div className="flex justify-between items-center pb-1.5 border-b border-slate-800">
+                  <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wide">Filtrar Linhas</span>
+                  {selectedLines.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedLines([]);
+                      }}
+                      className="text-[9px] text-amber-400 hover:text-amber-300 underline font-black cursor-pointer uppercase"
+                    >
+                      Limpar
+                    </button>
+                  )}
+                </div>
+                
+                <div className="max-h-48 overflow-y-auto pr-1 select-none flex flex-col bg-slate-950/45 rounded border border-slate-800/60 divide-y divide-slate-805">
+                  {lines.filter(l => l !== 'TODAS').map((ln) => {
+                    const isChecked = selectedLines.includes(ln);
+                    return (
+                      <label 
+                        key={ln} 
+                        className="flex items-center gap-2 py-1.5 px-2 hover:bg-slate-805/60 rounded cursor-pointer transition-colors text-left"
+                      >
+                        <input 
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => {
+                            if (isChecked) {
+                              setSelectedLines(selectedLines.filter(l => l !== ln));
+                            } else {
+                              setSelectedLines([...selectedLines, ln].sort());
+                            }
+                          }}
+                          className="rounded border-slate-650 bg-slate-900 text-amber-500 focus:ring-amber-500 h-3.5 w-3.5 cursor-pointer accent-amber-550"
+                        />
+                        <span className="text-[11px] font-bold text-slate-300">
+                          Linha {ln}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1239,26 +1572,92 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
                     <tr 
                       key={item.id || `row-${rowIdx}`} 
                       onClick={() => setSelectedRowId(isSelected ? null : item.id)}
-                      className={`group transition-colors cursor-pointer odd:bg-slate-850/40 even:bg-slate-850/80 ${
+                      draggable
+                      onDragStart={(e) => {
+                        setDraggedRowId(item.id);
+                        e.dataTransfer.effectAllowed = 'move';
+                        e.dataTransfer.setData('text/plain', item.id);
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        if (dragOverRowId !== item.id) {
+                          setDragOverRowId(item.id);
+                        }
+                      }}
+                      onDragEnd={() => {
+                        setDraggedRowId(null);
+                        setDragOverRowId(null);
+                      }}
+                      onDrop={async (e) => {
+                        e.preventDefault();
+                        const sourceId = draggedRowId;
+                        setDragOverRowId(null);
+                        setDraggedRowId(null);
+
+                        if (!sourceId || sourceId === item.id) return;
+
+                        // Reorder locally
+                        let updatedList: any[] = [];
+                        setWipItems(prev => {
+                          const list = [...prev];
+                          const sourceIndex = list.findIndex(x => x.id === sourceId);
+                          const targetIndex = list.findIndex(x => x.id === item.id);
+
+                          if (sourceIndex === -1 || targetIndex === -1) return prev;
+
+                          const [moved] = list.splice(sourceIndex, 1);
+                          list.splice(targetIndex, 0, moved);
+
+                          updatedList = list.map((x, idx) => ({
+                            ...x,
+                            _rowIndex: idx + 2
+                          }));
+                          return updatedList;
+                        });
+
+                        // Save new order to backend
+                        try {
+                          const activeIdsInOrder = updatedList.map(x => x.id);
+                          await api.post('reorderPCPRows', {
+                            sheetName: 'Wip042',
+                            idList: activeIdsInOrder
+                          });
+                          setFeedback({ type: 'success', text: 'Linha reordenada e salva na planilha com sucesso!' });
+                          setTimeout(() => setFeedback(null), 3000);
+                        } catch (err) {
+                          console.warn('Erro ao salvar ordenação:', err);
+                        }
+                      }}
+                      className={`group transition-all cursor-pointer odd:bg-slate-850/40 even:bg-slate-850/80 ${
                         isSelected ? 'bg-blue-900/40 ring-1 ring-amber-500/50' : 'hover:bg-slate-800/70'
+                      } ${
+                        dragOverRowId === item.id ? 'border-t-4 border-t-amber-500 bg-amber-500/15' : ''
+                      } ${
+                        draggedRowId === item.id ? 'opacity-40 bg-slate-800' : ''
                       }`}
                     >
                       {/* Floating / Sticky row action buttons on leftmost */}
-                      <td className={`sticky left-0 z-10 border-r border-slate-700 text-center px-2 py-1.5 transition-colors ${
+                      <td className={`sticky left-0 z-10 border-r border-slate-700 text-center px-1.5 py-1.5 transition-colors ${
                         isSelected ? '!bg-blue-900/60 text-white' : 'bg-slate-900/95 text-slate-400'
                       }`}>
-                        <div className="flex items-center justify-center gap-1.5 h-full">
+                        <div className="flex items-center justify-center gap-1 h-full">
+                          <div 
+                            title="Arraste para mover a linha" 
+                            className="p-0.5 cursor-grab active:cursor-grabbing hover:bg-slate-800 rounded transition-colors text-slate-500 hover:text-amber-400"
+                          >
+                            <GripVertical size={11} />
+                          </div>
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               startEditingRow(item);
                             }}
                             title="Editar toda a linha"
-                            className="p-1 hover:bg-slate-800 text-slate-400 hover:text-amber-400 rounded transition-colors border border-slate-850 hover:border-slate-700/70"
+                            className="p-0.5 hover:bg-slate-800 text-slate-500 hover:text-amber-400 rounded transition-colors border border-slate-850 hover:border-slate-700/70"
                           >
                             <Edit2 size={11} />
                           </button>
-                          <span className="text-[9px] text-slate-500 font-bold font-mono">
+                          <span className="text-[9px] text-slate-500 font-bold font-mono min-w-[12px]">
                             {item._rowIndex || rowIdx + 2}
                           </span>
                         </div>
@@ -1473,8 +1872,30 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
                       <input
                         type="text"
                         value={formFields[col] || ''}
-                        onChange={(e) => setFormFields(prev => ({ ...prev, [col]: e.target.value }))}
-                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:ring-1 focus:ring-amber-500"
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setFormFields(prev => {
+                            let updated = { ...prev, [col]: val };
+                            if (col === "DATA ORIGINAL") {
+                              const calculated = calculateRetroDates(val);
+                              for (const [calcCol, calcVal] of Object.entries(calculated)) {
+                                let matchCol = calcCol;
+                                const normCalc = calcCol.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+                                
+                                for (const key of Object.keys(prev)) {
+                                  const normKey = key.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+                                  if (normKey === normCalc || (normCalc.includes("corte") && normKey.includes("corte"))) {
+                                    matchCol = key;
+                                    break;
+                                  }
+                                }
+                                updated[matchCol] = calcVal;
+                              }
+                            }
+                            return updated;
+                          });
+                        }}
+                        className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:ring-1 focus:ring-amber-500 font-mono"
                       />
                     </div>
                   ))}

@@ -49,6 +49,9 @@ function doPost(e) {
       case 'savePCPData':
         result = savePCPData(data);
         break;
+      case 'reorderPCPRows':
+        result = reorderRows(data.sheetName || 'Wip042', data.idList);
+        break;
       default:
         throw new Error("Ação não encontrada: " + action);
     }
@@ -647,4 +650,50 @@ function getMergedPCPData() {
   }
   
   return merged;
+}
+
+function reorderRows(sheetName, idList) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(sheetName);
+  if (!sheet) throw new Error("Planilha não encontrada: " + sheetName);
+  
+  var dataRange = sheet.getDataRange();
+  var values = dataRange.getValues();
+  if (values.length <= 1) return { success: true };
+  
+  var headers = values[0];
+  var idColumnIndex = headers.indexOf('id') !== -1 ? headers.indexOf('id') : headers.indexOf('ID');
+  if (idColumnIndex === -1) throw new Error("Coluna de ID não encontrada na planilha " + sheetName);
+  
+  // Mapeia linhas existentes por ID
+  var rowMap = {};
+  for (var i = 1; i < values.length; i++) {
+    var idVal = String(values[i][idColumnIndex]);
+    rowMap[idVal] = values[i];
+  }
+  
+  // Re-monta os dados de acordo com a lista de IDs recebida
+  var newValues = [headers];
+  var matchedIds = {};
+  
+  for (var j = 0; j < idList.length; j++) {
+    var reqId = String(idList[j]);
+    if (rowMap[reqId]) {
+      newValues.push(rowMap[reqId]);
+      matchedIds[reqId] = true;
+    }
+  }
+  
+  // Mantém quaisquer outras linhas que não estavam na lista enviada para evitar perda de dados
+  for (var i = 1; i < values.length; i++) {
+    var idVal = String(values[i][idColumnIndex]);
+    if (!matchedIds[idVal]) {
+      newValues.push(values[i]);
+    }
+  }
+  
+  // Limpa e sobrescreve a planilha com os novos valores reordenados
+  sheet.clearContents();
+  sheet.getRange(1, 1, newValues.length, headers.length).setValues(newValues);
+  
+  return { success: true };
 }
