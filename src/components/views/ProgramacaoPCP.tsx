@@ -20,6 +20,8 @@ import {
   SlidersHorizontal,
   ChevronLeft,
   ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   Download,
   Info,
   Eye,
@@ -172,7 +174,7 @@ const calculateRetroDates = (originalDateStr: string): { [key: string]: string }
   return {
     "DATA SERIGRAFIA": formatDate(serigrafiaDate),
     "DATA SUPERMERCADO": formatDate(supermercadoDate),
-    "DATA CORTE / CORTE AUTO": formatDate(corteDate),
+    "DATA CORTE / CORTE AUTOMATICO ": formatDate(corteDate),
     "DATA AVIAMENTOS": formatDate(aviamentosDate),
     "DATA M2": formatDate(m2Date)
   };
@@ -348,6 +350,7 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
   
   // Custom filter states
   const [searchTerm, setSearchTerm] = useState('');
+  const [searchInput, setSearchInput] = useState(''); // Local search state for debouncing
   const [selectedWeeks, setSelectedWeeks] = useState<string[]>([]);
   const [showWeekSelector, setShowWeekSelector] = useState(false);
   const weekSelectorRef = useRef<HTMLDivElement>(null);
@@ -365,6 +368,27 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
   const lineSelectorRef = useRef<HTMLDivElement>(null);
 
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(100); // 100 rows per page default
+  
+  // Debounce search input for instant, lag-free typing performance
+  useEffect(() => {
+    if (searchInput === '') {
+      setSearchTerm('');
+      return;
+    }
+    const handler = setTimeout(() => {
+      setSearchTerm(searchInput);
+    }, 150);
+    return () => clearTimeout(handler);
+  }, [searchInput]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedWeeks, selectedBrands, selectedStatusOpers, selectedLines]);
 
   // States for row dragging reorder
   const [draggedRowId, setDraggedRowId] = useState<string | null>(null);
@@ -386,6 +410,27 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
 
   // Column visibility states
   const [hiddenColumns, setHiddenColumns] = useState<string[]>([]);
+  const [columnOrder, setColumnOrder] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('PCP_COLUMNS_ONLY_ORDER');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length === PCP_COLUMNS.length) {
+            const allMatch = parsed.every(col => PCP_COLUMNS.includes(col)) && PCP_COLUMNS.every(col => parsed.includes(col));
+            if (allMatch) {
+              return parsed;
+            }
+          }
+        } catch (e) {
+          console.warn("Error parsing PCP_COLUMNS_ONLY_ORDER", e);
+        }
+      }
+    }
+    return [...PCP_COLUMNS];
+  });
+  const [draggedColName, setDraggedColName] = useState<string | null>(null);
+  const [dragOverColName, setDragOverColName] = useState<string | null>(null);
   const [showColumnSelector, setShowColumnSelector] = useState(false);
   const [columnSearch, setColumnSearch] = useState('');
   const columnSelectorRef = useRef<HTMLDivElement>(null);
@@ -506,32 +551,27 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
   }, [setHeaderContent, hideHeaderPanels, loading, searchTerm, selectedWeeks, selectedBrands, selectedStatusOpers, selectedLines]);
 
   const visibleColumns = useMemo(() => {
-    const list = PCP_COLUMNS.filter(col => !hiddenColumns.includes(col));
-    return list.length > 0 ? list : PCP_COLUMNS;
-  }, [hiddenColumns]);
+    const list = columnOrder.filter(col => !hiddenColumns.includes(col));
+    return list.length > 0 ? list : columnOrder;
+  }, [columnOrder, hiddenColumns]);
 
   // Dynamic sticky column left positions based on visible columns
   const getStickyLeft = (colName: string, visibleCols: string[]) => {
     let offset = 75; // Actions column is 75px
-    if (colName === "LINHA / FÁBRICA") return offset;
-    
-    if (colName === "LINHAS ANTIGAS") {
-      const col0Visible = visibleCols.includes("LINHA / FÁBRICA");
-      return col0Visible ? offset + 125 : offset;
-    }
-    
-    if (colName === "LINHA SERIG") {
-      let currentOffset = offset;
-      if (visibleCols.includes("LINHA / FÁBRICA")) {
-        currentOffset += 125;
+    const stickyCols = ["LINHA / FÁBRICA", "LINHAS ANTIGAS", "LINHA SERIG"];
+    if (!stickyCols.includes(colName)) return 0;
+
+    const indexInVisible = visibleCols.indexOf(colName);
+    if (indexInVisible === -1) return 0;
+
+    let currentOffset = offset;
+    for (let i = 0; i < indexInVisible; i++) {
+      const prevCol = visibleCols[i];
+      if (stickyCols.includes(prevCol)) {
+        currentOffset += 125; // Each of these sticky columns has min-w-[125px]
       }
-      if (visibleCols.includes("LINHAS ANTIGAS")) {
-        currentOffset += 125;
-      }
-      return currentOffset;
     }
-    
-    return offset;
+    return currentOffset;
   };
 
   // Fetch data
@@ -780,6 +820,17 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
     return { totalOrders, totalQty, brandLoads };
   }, [filteredWip]);
 
+  // Paginated subset of rows for instantaneous performance
+  const paginatedWip = useMemo(() => {
+    if (pageSize === -1) return filteredWip;
+    const startIndex = (currentPage - 1) * pageSize;
+    return filteredWip.slice(startIndex, startIndex + pageSize);
+  }, [filteredWip, currentPage, pageSize]);
+
+  const totalItems = filteredWip.length;
+  const totalPages = pageSize === -1 ? 1 : Math.ceil(totalItems / pageSize);
+  const safeCurrentPage = Math.min(currentPage, totalPages || 1);
+
   // Helper to generate completely realistic full mock rows based on the user screenshot
   function getEnrichedMockRow(baseItem: any, idx: number): any {
     const defaultTemplates = [
@@ -827,7 +878,7 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
         "DATA M2": "",
         "DATA AVIAMENTOS": "FALTA SERIGRAFIA",
         "DATA SERIGRAFIA": "1263270 FILME ADES NF 676 09/06 AG ENVIO",
-        "DATA CORTE / CORTE AUTO": "",
+        "DATA CORTE / CORTE AUTOMATICO ": "",
         "DATA SUPERMERCADO": "",
         "DATA ORIGINAL": "",
         "TIPO DE MATERIAL": "SINTETICO",
@@ -1117,8 +1168,8 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
             <input
               type="text"
               placeholder="Buscar por lote, modelo, OP..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
               className="w-full bg-slate-900 border border-slate-700 hover:border-slate-600 rounded-lg pl-8 pr-2.5 py-1.5 text-xs text-slate-100 outline-none focus:ring-1 focus:ring-amber-550 transition-all placeholder:text-slate-500 h-[34px]"
             />
           </div>
@@ -1433,7 +1484,7 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
                 <div className="absolute right-0 mt-1.5 w-72 bg-slate-900 border border-slate-700 rounded-lg shadow-xl z-50 p-3 flex flex-col gap-2.5">
                   <div className="flex justify-between items-center pb-2 border-b border-slate-800">
                     <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wide">Exibir/Ocultar Colunas</span>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2.5 items-center">
                       <button
                         type="button"
                         onClick={() => handleUpdateHiddenColumns([])}
@@ -1444,9 +1495,20 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
                       <button
                         type="button"
                         onClick={() => handleUpdateHiddenColumns([...PCP_COLUMNS])}
-                        className="text-[9px] text-slate-400 hover:text-white underline font-black cursor-pointer uppercase"
+                        className="text-[9px] text-slate-405 hover:text-white underline font-black cursor-pointer uppercase"
                       >
                         Nenhuma
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setColumnOrder([...PCP_COLUMNS]);
+                          localStorage.removeItem('PCP_COLUMNS_ONLY_ORDER');
+                        }}
+                        className="text-[9px] text-emerald-450 hover:text-emerald-355 underline font-black cursor-pointer uppercase font-sans"
+                        title="Restaurar colunas para a ordem original padrão"
+                      >
+                        Restaurar Ordem
                       </button>
                     </div>
                   </div>
@@ -1464,7 +1526,7 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
                   
                   {/* Lista com scroll */}
                   <div className="max-h-64 overflow-y-auto divide-y divide-slate-805 pr-1 select-none flex flex-col bg-slate-950/45 rounded border border-slate-800/60">
-                    {PCP_COLUMNS.filter(col => 
+                    {columnOrder.filter(col => 
                       col.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
                         .includes(columnSearch.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""))
                     ).map((col) => {
@@ -1513,6 +1575,7 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
             Nenhuma linha na planilha encontrou correspondência com os filtros informados.
           </div>
         ) : (
+          <>
           /* Table horizontal scrolling container */
           <div className="overflow-x-auto relative flex-1 overflow-y-auto border border-slate-700/60 rounded-lg min-h-0">
             <table className="min-w-max w-full text-left border-collapse select-none bg-slate-900">
@@ -1528,32 +1591,71 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
 
                   {/* Dynamic spreadsheet column headers (visible only) */}
                   {visibleColumns.map((col) => {
-                    const index = PCP_COLUMNS.indexOf(col);
                     const bgClass = getHeaderBgClass(col);
                     const widthClass = getColMinWidth(col);
                     
                     // First 3 columns will be frozen/sticky on the left if visible
                     let stickyClass = "";
                     let stickyStyle: React.CSSProperties = {};
-                    if (index === 0) {
-                      // LINHA / FÁBRICA
+                    const isStickyCol = ["LINHA / FÁBRICA", "LINHAS ANTIGAS", "LINHA SERIG"].includes(col);
+                    if (isStickyCol) {
                       stickyClass = "sticky z-30 shadow-[1px_0_0_0_rgba(100,116,139,0.3)]";
-                      stickyStyle = { left: `${getStickyLeft('LINHA / FÁBRICA', visibleColumns)}px` };
-                    } else if (index === 1) {
-                      // LINHAS ANTIGAS
-                      stickyClass = "sticky z-30 shadow-[1px_0_0_0_rgba(100,116,139,0.3)]";
-                      stickyStyle = { left: `${getStickyLeft('LINHAS ANTIGAS', visibleColumns)}px` };
-                    } else if (index === 2) {
-                      // LINHA SERIG
-                      stickyClass = "sticky z-30 shadow-[1px_0_0_0_rgba(100,116,139,0.3)]";
-                      stickyStyle = { left: `${getStickyLeft('LINHA SERIG', visibleColumns)}px` };
+                      stickyStyle = { left: `${getStickyLeft(col, visibleColumns)}px` };
                     }
 
                     return (
                       <th 
                         key={col} 
                         style={stickyStyle}
-                        className={`py-1 px-1 h-[36px] text-[10px] font-black uppercase text-center border-r select-none ${bgClass} ${widthClass} ${stickyClass}`}
+                        draggable
+                        onDragStart={(e) => {
+                          setDraggedColName(col);
+                          e.dataTransfer.effectAllowed = 'move';
+                          e.dataTransfer.setData('text/plain', col);
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          if (dragOverColName !== col) {
+                            setDragOverColName(col);
+                          }
+                        }}
+                        onDragLeave={() => {
+                          if (dragOverColName === col) {
+                            setDragOverColName(null);
+                          }
+                        }}
+                        onDragEnd={() => {
+                          setDraggedColName(null);
+                          setDragOverColName(null);
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const source = draggedColName;
+                          setDraggedColName(null);
+                          setDragOverColName(null);
+                          
+                          if (!source || source === col) return;
+                          
+                          setColumnOrder(prev => {
+                            const list = [...prev];
+                            const sourceIdx = list.indexOf(source);
+                            const targetIdx = list.indexOf(col);
+                            if (sourceIdx === -1 || targetIdx === -1) return prev;
+                            
+                            // Swap column positions
+                            const [moved] = list.splice(sourceIdx, 1);
+                            list.splice(targetIdx, 0, moved);
+                            
+                            localStorage.setItem('PCP_COLUMNS_ONLY_ORDER', JSON.stringify(list));
+                            return list;
+                          });
+                        }}
+                        className={`py-1 px-1 h-[36px] text-[10px] font-black uppercase text-center border-r select-none cursor-grab active:cursor-grabbing transition-all ${bgClass} ${widthClass} ${stickyClass} ${
+                          draggedColName === col ? 'opacity-30 bg-slate-800' : ''
+                        } ${
+                          dragOverColName === col ? 'border-l-4 border-l-amber-500 bg-amber-500/20' : ''
+                        }`}
+                        title="Arraste e solte para reordenar esta coluna"
                       >
                         <div className="whitespace-nowrap overflow-hidden text-ellipsis px-0.5 text-center font-extrabold tracking-tight">
                           {col}
@@ -1566,7 +1668,7 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
 
               {/* Data Rows */}
               <tbody className="divide-y divide-slate-700/80">
-                {filteredWip.map((item, rowIdx) => {
+                {paginatedWip.map((item, rowIdx) => {
                   const isSelected = selectedRowId === item.id;
                   return (
                     <tr 
@@ -1658,7 +1760,7 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
                             <Edit2 size={11} />
                           </button>
                           <span className="text-[9px] text-slate-500 font-bold font-mono min-w-[12px]">
-                            {item._rowIndex || rowIdx + 2}
+                            {item._rowIndex || (pageSize === -1 ? rowIdx + 2 : (currentPage - 1) * pageSize + rowIdx + 2)}
                           </span>
                         </div>
                       </td>
@@ -1673,15 +1775,10 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
                         // Position first 3 frozen/sticky columns of sheet Wip042 if visible
                         let stickyCellClass = "";
                         let stickyStyle: React.CSSProperties = {};
-                        if (colIdx === 0) {
+                        const isStickyCol = ["LINHA / FÁBRICA", "LINHAS ANTIGAS", "LINHA SERIG"].includes(col);
+                        if (isStickyCol) {
                           stickyCellClass = "sticky z-10 shadow-[1px_0_0_0_rgba(100,116,139,0.3)] bg-yellow-300";
-                          stickyStyle = { left: `${getStickyLeft('LINHA / FÁBRICA', visibleColumns)}px` };
-                        } else if (colIdx === 1) {
-                          stickyCellClass = "sticky z-10 shadow-[1px_0_0_0_rgba(100,116,139,0.3)] bg-yellow-300";
-                          stickyStyle = { left: `${getStickyLeft('LINHAS ANTIGAS', visibleColumns)}px` };
-                        } else if (colIdx === 2) {
-                          stickyCellClass = "sticky z-10 shadow-[1px_0_0_0_rgba(100,116,139,0.3)] bg-yellow-300";
-                          stickyStyle = { left: `${getStickyLeft('LINHA SERIG', visibleColumns)}px` };
+                          stickyStyle = { left: `${getStickyLeft(col, visibleColumns)}px` };
                         }
 
                         // Determine if cell is active for inline quick text editing
@@ -1706,7 +1803,9 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
                             title={cellTooltip}
                             className={`px-3 py-1.5 border-r border-slate-300/40 text-[11px] hover:ring-1 hover:ring-amber-500/40 cursor-text transition-all ${
                               wrapText ? 'whitespace-normal break-words overflow-visible' : 'whitespace-nowrap overflow-hidden text-ellipsis'
-                            } ${widthClass} ${cellStyleClass} ${stickyCellClass} ${selectedCellClass}`}
+                            } ${widthClass} ${cellStyleClass} ${stickyCellClass} ${selectedCellClass} ${
+                              draggedColName === col ? 'opacity-30' : ''
+                            }`}
                           >
                             {isEditingCell ? (
                               <input
@@ -1742,6 +1841,136 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
               </tbody>
             </table>
           </div>
+          
+          {/* Pagination Controls */}
+          {filteredWip.length > 0 && (
+            <div className="mt-3 bg-slate-850 rounded-lg p-3 border border-slate-705/85 shadow-md flex flex-col md:flex-row items-center justify-between gap-3 text-xs text-slate-300 select-none">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] font-medium text-slate-400">Linhas por página:</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    const newSize = parseInt(e.target.value);
+                    setPageSize(newSize);
+                    setCurrentPage(1);
+                  }}
+                  className="bg-slate-900 border border-slate-700 hover:border-slate-600 rounded px-2 py-0.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500 font-bold transition-all cursor-pointer h-7"
+                >
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                  <option value={250}>250</option>
+                  <option value={500}>500</option>
+                  <option value={-1}>Ver todas</option>
+                </select>
+                
+                <span className="text-[11px] text-slate-400 ml-1">
+                  Exibindo <strong>{Math.min(filteredWip.length, (safeCurrentPage - 1) * (pageSize === -1 ? filteredWip.length : pageSize) + 1)}</strong> a <strong>{Math.min(filteredWip.length, safeCurrentPage * (pageSize === -1 ? filteredWip.length : pageSize))}</strong> de <strong>{filteredWip.length}</strong> {filteredWip.length === 1 ? 'linha' : 'linhas'} filtradas
+                </span>
+                {pageSize === -1 && (
+                  <span className="text-[10px] text-amber-500 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded font-bold uppercase ml-1">
+                     Carregar todas as linhas pode reduzir o desempenho
+                  </span>
+                )}
+              </div>
+              
+              {pageSize !== -1 && totalPages > 1 && (
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setCurrentPage(1)}
+                    disabled={safeCurrentPage === 1}
+                    className="p-1.5 rounded bg-slate-900 hover:bg-slate-750 text-slate-300 disabled:opacity-35 disabled:hover:bg-slate-900 disabled:cursor-not-allowed border border-slate-700 transition-colors cursor-pointer flex items-center justify-center font-bold"
+                    title="Primeira Página"
+                  >
+                    <ChevronsLeft size={13} />
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    disabled={safeCurrentPage === 1}
+                    className="p-1.5 rounded bg-slate-900 hover:bg-slate-750 text-slate-300 disabled:opacity-35 disabled:hover:bg-slate-900 disabled:cursor-not-allowed border border-slate-700 transition-colors cursor-pointer flex items-center justify-center font-bold"
+                    title="Página Anterior"
+                  >
+                    <ChevronLeft size={13} />
+                  </button>
+                  
+                  {/* Page numbers */}
+                  <div className="flex items-center gap-1">
+                    {(() => {
+                      const list = [];
+                      const start = Math.max(1, safeCurrentPage - 2);
+                      const end = Math.min(totalPages, safeCurrentPage + 2);
+                      
+                      if (start > 1) {
+                        list.push(
+                          <button
+                            key={1}
+                            onClick={() => setCurrentPage(1)}
+                            className="w-7 h-7 text-xs rounded border border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-750 font-bold transition-all cursor-pointer"
+                          >
+                            1
+                          </button>
+                        );
+                        if (start > 2) {
+                          list.push(<span key="ellipsis-start" className="px-1 text-[10px] text-slate-500 font-bold">...</span>);
+                        }
+                      }
+                      
+                      for (let i = start; i <= end; i++) {
+                        const isCurrent = i === safeCurrentPage;
+                        list.push(
+                          <button
+                            key={i}
+                            onClick={() => setCurrentPage(i)}
+                            className={`w-7 h-7 text-xs rounded font-bold transition-all cursor-pointer ${
+                              isCurrent
+                                ? 'bg-amber-500 text-slate-950 border border-amber-600 shadow-md'
+                                : 'border border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-750'
+                            }`}
+                          >
+                            {i}
+                          </button>
+                        );
+                      }
+                      
+                      if (end < totalPages) {
+                        if (end < totalPages - 1) {
+                          list.push(<span key="ellipsis-end" className="px-1 text-[10px] text-slate-500 font-bold">...</span>);
+                        }
+                        list.push(
+                          <button
+                            key={totalPages}
+                            onClick={() => setCurrentPage(totalPages)}
+                            className="w-7 h-7 text-xs rounded border border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-750 font-bold transition-all cursor-pointer"
+                          >
+                            {totalPages}
+                          </button>
+                        );
+                      }
+                      
+                      return list;
+                    })()}
+                  </div>
+                  
+                  <button
+                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                    disabled={safeCurrentPage === totalPages}
+                    className="p-1.5 rounded bg-slate-900 hover:bg-slate-750 text-slate-300 disabled:opacity-35 disabled:hover:bg-slate-900 disabled:cursor-not-allowed border border-slate-700 transition-colors cursor-pointer flex items-center justify-center font-bold"
+                    title="Próxima Página"
+                  >
+                    <ChevronRight size={13} />
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage(totalPages)}
+                    disabled={safeCurrentPage === totalPages}
+                    className="p-1.5 rounded bg-slate-900 hover:bg-slate-750 text-slate-300 disabled:opacity-35 disabled:hover:bg-slate-900 disabled:cursor-not-allowed border border-slate-700 transition-colors cursor-pointer flex items-center justify-center font-bold"
+                    title="Última Página"
+                  >
+                    <ChevronsRight size={13} />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+          </>
         )}
       </div>
 
