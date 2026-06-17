@@ -105,7 +105,7 @@ function register(data) {
     'SENHA': data.password,
     'PAPEL': data.role || 'User',
     'STATUS': 'ativo',
-    'Permissões de Tela (Módulos)': '',
+    'Permissões de Tela (Módulos)': '{"painel":true}',
     'Bio': '',
     'Location': '',
     'Img': '',

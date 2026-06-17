@@ -4,7 +4,15 @@ import { Lock, Mail, ArrowRight, Loader2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { api } from '@/lib/api';
 
-export default function Login({ onLogin, onGoToRegister }: { onLogin: () => void, onGoToRegister: () => void }) {
+export default function Login({ 
+  onLogin, 
+  onGoToRegister, 
+  successMessage 
+}: { 
+  onLogin: () => void, 
+  onGoToRegister: () => void,
+  successMessage?: string | null
+}) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -53,6 +61,11 @@ export default function Login({ onLogin, onGoToRegister }: { onLogin: () => void
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
+          {successMessage && (
+            <div className="bg-green-50 text-green-700 p-3.5 rounded-lg text-sm border border-green-200 font-medium">
+              {successMessage}
+            </div>
+          )}
           {error && (
             <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm border border-red-100">
               {error}

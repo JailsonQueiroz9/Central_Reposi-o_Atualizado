@@ -4,7 +4,7 @@ import { Lock, Mail, User, ArrowRight, Loader2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { api } from '@/lib/api';
 
-export default function Register({ onRegister, onGoToLogin }: { onRegister: () => void, onGoToLogin: () => void }) {
+export default function Register({ onRegisterSuccess, onGoToLogin }: { onRegisterSuccess: (email: string) => void, onGoToLogin: () => void }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -19,9 +19,7 @@ export default function Register({ onRegister, onGoToLogin }: { onRegister: () =
     try {
       const user = await api.post('register', { name, email, password });
       if (user) {
-        // Store user info in localStorage if needed
-        localStorage.setItem('pcp_user', JSON.stringify(user));
-        onRegister();
+        onRegisterSuccess(email);
       } else {
         setError('Erro ao criar conta. Tente novamente.');
       }

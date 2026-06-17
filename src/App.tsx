@@ -38,6 +38,7 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [authView, setAuthView] = useState<'login' | 'register'>('login');
+  const [authSuccessMessage, setAuthSuccessMessage] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
   
   const [activeView, setActiveView] = useState<ViewType>('painel');
@@ -331,9 +332,32 @@ export default function App() {
 
   if (!isAuthenticated) {
     if (authView === 'login') {
-      return <Login onLogin={handleLoginSuccess} onGoToRegister={() => setAuthView('register')} />;
+      return (
+        <Login 
+          onLogin={() => {
+            setAuthSuccessMessage(null);
+            handleLoginSuccess();
+          }} 
+          onGoToRegister={() => {
+            setAuthSuccessMessage(null);
+            setAuthView('register');
+          }} 
+          successMessage={authSuccessMessage}
+        />
+      );
     }
-    return <Register onRegister={handleLoginSuccess} onGoToLogin={() => setAuthView('login')} />;
+    return (
+      <Register 
+        onRegisterSuccess={(email) => {
+          setAuthSuccessMessage(`Inscrição concluída com sucesso (${email})! Insira sua senha para acessar.`);
+          setAuthView('login');
+        }} 
+        onGoToLogin={() => {
+          setAuthSuccessMessage(null);
+          setAuthView('login');
+        }} 
+      />
+    );
   }
 
   const renderView = () => {
