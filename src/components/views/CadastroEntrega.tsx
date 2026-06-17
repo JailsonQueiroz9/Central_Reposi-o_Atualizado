@@ -310,8 +310,10 @@ export default function CadastroEntrega() {
 
           {/* Pending Items Section */}
           <div className="mt-4">
-            <h2 className="text-lg font-bold text-gray-700 mb-4 flex items-center gap-2">
-              <FileText size={20} className="text-slate-800" />
+            <h2 className={`text-lg font-bold mb-4 flex items-center gap-2 transition-colors ${
+              activeTab === 'm2' ? 'text-emerald-800' : 'text-[#483D8B]'
+            }`}>
+              <FileText size={20} className={activeTab === 'm2' ? 'text-emerald-600' : 'text-indigo-600'} />
               {activeTab === 'm2' ? 'Itens Pendentes para Entrega M²' : 'Itens Pendentes para Entrega Aviamento'}
             </h2>
             {displayedItems.length > 0 ? (
@@ -427,8 +429,8 @@ function PriorityBadge({ priority }: { priority: string }) {
   } else if (p === 'baixa') {
     colors = 'bg-blue-100 text-blue-700 border-blue-200';
   } else if (p === 'embarque') {
-    colors = 'bg-amber-100 text-amber-850 border-amber-250 font-black';
-    label = 'EMBARQUE ✈️';
+    colors = 'bg-amber-100 text-black border-amber-300 font-black';
+    label = 'EMBARQUE 🚚';
   } else {
     colors = 'bg-gray-50 text-gray-400 border-gray-200';
     label = 'NORMAL';

@@ -291,8 +291,8 @@ function PriorityBadge({ priority }: { priority: string }) {
   } else if (p === 'baixa') {
     colors = 'bg-blue-100 text-blue-700 border-blue-200';
   } else if (p === 'embarque') {
-    colors = 'bg-amber-100 text-amber-850 border-amber-250 font-black';
-    label = 'EMBARQUE ✈️';
+    colors = 'bg-amber-100 text-black border-amber-300 font-black';
+    label = 'EMBARQUE 🚚';
   } else {
     colors = 'bg-gray-50 text-gray-400 border-gray-200';
     label = 'NORMAL';
