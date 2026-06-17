@@ -5,7 +5,7 @@ export const api = {
    * @param data Dados a serem enviados para a ação (opcional)
    */
   post: async (action: string, data: any = {}) => {
-    const url = import.meta.env.VITE_API_URL || import.meta.env.VITE_APPS_SCRIPT_URL || "https://script.google.com/macros/s/AKfycbwXt-KyiVYzIUu0R-O-WQKgHtEeM3Z3uGllCJuEnYr-iSmhcdsEk4xPE1GApVBSOK86rQ/exec";
+    const url = import.meta.env.VITE_API_URL || import.meta.env.VITE_APPS_SCRIPT_URL || "https://script.google.com/macros/s/AKfycbwLQeduS0-5TcVcDVvlzCv0b-PwGb2LdFiAG5sjfqrymVZYwX8ysgE5KO-W92r01VM3jw/exec";
     
     const isInvalidUrl = !url || url.includes('TODO') || url.includes('YOUR_') || url.trim() === '';
 
@@ -136,7 +136,15 @@ function mockResponse(action: string, data: any) {
             nome: data.name, 
             email: data.email, 
             role: 'Operador',
-            'Permissões de Tela (Módulos)': JSON.stringify({ painel: true })
+            'Permissões de Tela (Módulos)': JSON.stringify({ 
+              painel: true, 
+              cadastro: false, 
+              followup: false, 
+              chat: false, 
+              config: false, 
+              producao: false, 
+              programacaoPCP: false 
+            })
           });
           break;
         case 'getOrders':

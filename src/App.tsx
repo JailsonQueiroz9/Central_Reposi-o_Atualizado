@@ -132,14 +132,30 @@ export default function App() {
     setIsAuthenticated(false);
   };
 
-  const handleLoginSuccess = () => {
+  const handleLoginSuccess = async () => {
     const storedUser = localStorage.getItem('pcp_user');
     if (storedUser) {
       const parsedUser = JSON.parse(storedUser);
-      setUser(parsedUser);
+      let mergedUser = parsedUser;
+
+      try {
+        const allUsers = await api.post('getUsers');
+        if (Array.isArray(allUsers)) {
+          const currentUserEmail = parsedUser.email || parsedUser['E-MAIL'];
+          const matchedUser = allUsers.find((u: any) => (u.email || u['E-MAIL']) === currentUserEmail);
+          if (matchedUser) {
+            mergedUser = { ...parsedUser, ...matchedUser };
+            localStorage.setItem('pcp_user', JSON.stringify(mergedUser));
+          }
+        }
+      } catch (err) {
+        console.warn('[LOGIN] Não foi possível carregar dados completos do usuário:', err);
+      }
+
+      setUser(mergedUser);
       
       // Define a primeira visualização disponível baseada nas permissões
-      const perms = parsedUser['Permissões de Tela (Módulos)'] || parsedUser.permissions;
+      const perms = mergedUser['Permissões de Tela (Módulos)'] || mergedUser.permissions;
       let pObj = perms;
       if (typeof perms === 'string') try { pObj = JSON.parse(perms); } catch(e) {}
       
@@ -150,7 +166,13 @@ export default function App() {
           }
           return pObj[item.perm] === true;
         })?.id;
-        if (firstView) setActiveView(firstView as any);
+        if (firstView) {
+          setActiveView(firstView as any);
+        } else {
+          setActiveView('painel');
+        }
+      } else {
+        setActiveView('painel');
       }
     }
     setIsAuthenticated(true);

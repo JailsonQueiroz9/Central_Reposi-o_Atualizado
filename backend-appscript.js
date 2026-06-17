@@ -83,7 +83,8 @@ function login(data) {
         id: users[i]['ID'],
         nome: users[i]['USUÁRIO'],
         email: users[i]['E-MAIL'],
-        funcao: users[i]['PAPEL']
+        funcao: users[i]['PAPEL'],
+        'Permissões de Tela (Módulos)': users[i]['Permissões de Tela (Módulos)'] || '{"painel":true,"cadastro":false,"followup":false,"chat":false,"config":false,"producao":false,"programacaoPCP":false}'
       };
     }
   }
@@ -105,7 +106,7 @@ function register(data) {
     'SENHA': data.password,
     'PAPEL': data.role || 'User',
     'STATUS': 'ativo',
-    'Permissões de Tela (Módulos)': '{"painel":true}',
+    'Permissões de Tela (Módulos)': '{"painel":true,"cadastro":false,"followup":false,"chat":false,"config":false,"producao":false,"programacaoPCP":false}',
     'Bio': '',
     'Location': '',
     'Img': '',
@@ -118,7 +119,8 @@ function register(data) {
     id: newUser['ID'],
     nome: newUser['USUÁRIO'],
     email: newUser['E-MAIL'],
-    funcao: newUser['PAPEL']
+    funcao: newUser['PAPEL'],
+    'Permissões de Tela (Módulos)': newUser['Permissões de Tela (Módulos)']
   };
 }
 

@@ -155,7 +155,7 @@ O sistema consome variáveis de ambiente mapeadas exclusivamente em tempo de bui
 
 ```env
 # URL Principal da API do Google Apps Script
-VITE_API_URL=https://script.google.com/macros/s/AKfycbwXt-KyiVYzIUu0R-O-WQKgHtEeM3Z3uGllCJuEnYr-iSmhcdsEk4xPE1GApVBSOK86rQ/exec
+VITE_API_URL=https://script.google.com/macros/s/AKfycbwLQeduS0-5TcVcDVvlzCv0b-PwGb2LdFiAG5sjfqrymVZYwX8ysgE5KO-W92r01VM3jw/exec
 
 # ID Interno da planilha utilizada pelo macro nas rotinas do Apps Script
 VITE_GOOGLE_SHEETS_SPREADSHEET_ID=id-da-planilha-mestre-pcp
