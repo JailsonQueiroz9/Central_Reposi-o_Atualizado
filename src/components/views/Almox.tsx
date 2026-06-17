@@ -64,23 +64,42 @@ export default function Almox() {
 
     if (!matchesSearch) return false;
 
-    if (filter === 'PENDENTE') return rawStatus === 'MPOK';
-    if (filter === 'M²') return statusNorm === 'SEPARACAO M²';
-    if (filter === 'AVIAMENTOS') return statusNorm === 'SEPARACAO AVIAMENTOS';
+    const medida = String(item['Medida'] || '').toUpperCase().trim();
+    const isM2 = medida === 'M²' || medida === 'M';
+
+    if (filter === 'PENDENTE') return rawStatus === 'MP PENDENTE';
     
-    // Todos traz o que importa para o Almox (MPOK e Separações)
-    return rawStatus === 'MPOK' || statusNorm.includes('SEPARACAO');
+    if (filter === 'M²') {
+      const isM2Status = statusNorm === 'SEPARACAO M²';
+      const isM2MPOK = rawStatus === 'MPOK' && isM2;
+      return isM2Status || isM2MPOK;
+    }
+    
+    if (filter === 'AVIAMENTOS') {
+      const isAviamentosStatus = statusNorm === 'SEPARACAO AVIAMENTOS';
+      const isAviamentosMPOK = rawStatus === 'MPOK' && !isM2;
+      return isAviamentosStatus || isAviamentosMPOK;
+    }
+    
+    // Todos traz o que importa para o Almox (MPOK, MP PENDENTE e Separações)
+    return rawStatus === 'MPOK' || rawStatus === 'MP PENDENTE' || statusNorm.includes('SEPARACAO');
   });
 
   const stats = {
-    pendente: materiais.filter(m => (m['Status'] || '').toUpperCase().trim() === 'MPOK').length,
+    pendente: materiais.filter(m => (m['Status'] || '').toUpperCase().trim() === 'MP PENDENTE').length,
     m2: materiais.filter(m => {
-      const s = (m['Status'] || '').toUpperCase().trim().replace(/Ç/g, 'C').replace(/[ÁÀÂÃ]/g, 'A');
-      return s === 'SEPARACAO M²';
+      const rawStatus = (m['Status'] || '').toUpperCase().trim();
+      const s = rawStatus.replace(/Ç/g, 'C').replace(/[ÁÀÂÃ]/g, 'A');
+      const medida = String(m['Medida'] || '').toUpperCase().trim();
+      const isM2 = medida === 'M²' || medida === 'M';
+      return s === 'SEPARACAO M²' || (rawStatus === 'MPOK' && isM2);
     }).length,
     aviamentos: materiais.filter(m => {
-      const s = (m['Status'] || '').toUpperCase().trim().replace(/Ç/g, 'C').replace(/[ÁÀÂÃ]/g, 'A');
-      return s === 'SEPARACAO AVIAMENTOS';
+      const rawStatus = (m['Status'] || '').toUpperCase().trim();
+      const s = rawStatus.replace(/Ç/g, 'C').replace(/[ÁÀÂÃ]/g, 'A');
+      const medida = String(m['Medida'] || '').toUpperCase().trim();
+      const isM2 = medida === 'M²' || medida === 'M';
+      return s === 'SEPARACAO AVIAMENTOS' || (rawStatus === 'MPOK' && !isM2);
     }).length,
   };
 
@@ -161,7 +180,7 @@ export default function Almox() {
                       className="hover:bg-gray-50/50 transition-colors group"
                     >
                       <td className="px-6 py-4">
-                        <StatusBadge status={item.Status} />
+                        <StatusBadge status={item.Status} item={item} />
                       </td>
                       <td className="px-6 py-4">
                         <div className="text-sm font-bold text-gray-800">{item.Ordem}</div>
@@ -221,7 +240,7 @@ function FilterButton({ children, active, onClick }: { children: React.ReactNode
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status, item }: { status: string; item?: any }) {
   const raw = (status || '').toUpperCase().trim();
   const sNorm = raw.replace(/Ç/g, 'C').replace(/[ÁÀÂÃ]/g, 'A');
   
@@ -229,13 +248,23 @@ function StatusBadge({ status }: { status: string }) {
   let label = raw;
   
   if (raw === 'MPOK') {
-    colors = 'bg-orange-100 text-orange-700 border border-orange-200';
-  } else if (sNorm === 'SEPARACAO M²') {
+    const medida = String(item?.['Medida'] || '').toUpperCase().trim();
+    if (medida === 'M²' || medida === 'M') {
+      colors = 'bg-purple-100 text-purple-700 border border-purple-250 bg-gradient-to-r from-purple-50 to-orange-50';
+      label = 'SEPARAÇÃO M²';
+    } else {
+      colors = 'bg-blue-100 text-blue-700 border border-blue-250 bg-gradient-to-r from-blue-50 to-orange-50';
+      label = 'SEPARAÇÃO AVIAMENTOS';
+    }
+  } else if (sNorm === 'SEPARACAO M²' || raw === 'SEPARAÇÃO M²') {
     colors = 'bg-purple-100 text-purple-700 border border-purple-200';
     label = 'SEPARAÇÃO M²';
-  } else if (sNorm === 'SEPARACAO AVIAMENTOS') {
+  } else if (sNorm === 'SEPARACAO AVIAMENTOS' || raw === 'SEPARAÇÃO AVIAMENTOS') {
     colors = 'bg-blue-100 text-blue-700 border border-blue-200';
     label = 'SEPARAÇÃO AVIAMENTOS';
+  } else if (raw === 'MP PENDENTE') {
+    colors = 'bg-red-100 text-red-700 border border-red-200';
+    label = 'MP PENDENTE';
   }
 
   return (

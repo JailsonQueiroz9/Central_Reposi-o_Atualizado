@@ -43,7 +43,11 @@ export default function Painel() {
   const statusesList = useMemo(() => {
     const stats = new Set<string>();
     materiais.forEach(m => {
-      const s = String(m['Status'] || '').trim().toUpperCase();
+      let s = String(m['Status'] || '').trim().toUpperCase();
+      if (s === 'MPOK') {
+        const medida = String(m['Medida'] || '').toUpperCase().trim();
+        s = (medida === 'M²' || medida === 'M') ? 'SEPARAÇÃO M²' : 'SEPARAÇÃO AVIAMENTOS';
+      }
       if (s && s !== 'STATUS') {
         stats.add(s);
       }
@@ -74,7 +78,11 @@ export default function Painel() {
 
       // 2. Status filter
       if (selectedStatus !== 'TODOS') {
-        const status = String(m['Status'] || '').trim().toUpperCase();
+        let status = String(m['Status'] || '').trim().toUpperCase();
+        if (status === 'MPOK') {
+          const medida = String(m['Medida'] || '').toUpperCase().trim();
+          status = (medida === 'M²' || medida === 'M') ? 'SEPARAÇÃO M²' : 'SEPARAÇÃO AVIAMENTOS';
+        }
         if (status !== selectedStatus) return false;
       }
 
@@ -242,8 +250,13 @@ export default function Painel() {
     const counts: Record<string, number> = {};
     
     materiais.forEach(curr => {
-      const rawStatus = String(curr['Status'] || '').toUpperCase().trim();
+      let rawStatus = String(curr['Status'] || '').toUpperCase().trim();
       if (!rawStatus || rawStatus === 'STATUS') return;
+      
+      if (rawStatus === 'MPOK') {
+        const medida = String(curr['Medida'] || '').toUpperCase().trim();
+        rawStatus = (medida === 'M²' || medida === 'M') ? 'SEPARAÇÃO M²' : 'SEPARAÇÃO AVIAMENTOS';
+      }
       
       const matchedKey = Object.keys(statusConfig).find(k => k.toUpperCase() === rawStatus);
       const label = matchedKey ? statusConfig[matchedKey].label : rawStatus;
@@ -268,11 +281,18 @@ export default function Painel() {
   const ultimasAtualizacoes = [...materiais]
     .reverse()
     .slice(0, 6)
-    .map(m => ({
-      ordem: m['Ordem'] || m['Ord_Rep'] || 'Desconhecida',
-      status: m['Status'] || 'Atualizado',
-      data: m['Data_Reg_Central'] || 'Recentemente'
-    }));
+    .map(m => {
+      let status = m['Status'] || 'Atualizado';
+      if (String(status).toUpperCase().trim() === 'MPOK') {
+        const medida = String(m['Medida'] || '').toUpperCase().trim();
+        status = (medida === 'M²' || medida === 'M') ? 'SEPARAÇÃO M²' : 'SEPARAÇÃO AVIAMENTOS';
+      }
+      return {
+        ordem: m['Ordem'] || m['Ord_Rep'] || 'Desconhecida',
+        status: status,
+        data: m['Data_Reg_Central'] || 'Recentemente'
+      };
+    });
 
   const setorCounts = materiais.reduce((acc, curr) => {
     const setor = String(curr['Setor'] || curr['destinatario_setor'] || 'N/A').toUpperCase().trim();
@@ -534,16 +554,46 @@ export default function Painel() {
                         <td className="p-3 text-sm text-gray-600 border-r border-gray-200/50 font-sans">{mat['Medida']}</td>
                         <td className="p-3 text-sm text-gray-600 border-r border-gray-200/50 font-sans">{mat['TAM.']}</td>
                         <td className="p-3 text-sm text-gray-600 border-r border-gray-200/50 font-sans">
-                          <span className={`inline-block px-2.5 py-1 text-xs font-bold rounded-lg ${
-                            String(mat['Status']).toUpperCase() === 'MPOK' ? 'bg-green-100 text-green-700 border border-green-200' :
-                            String(mat['Status']).toUpperCase() === 'SOLICITADO COMPRA' || String(mat['Status']).toUpperCase() === 'EM PROCESSO DE COMPRA' ? 'bg-orange-100 text-orange-700 border border-orange-200' :
-                            String(mat['Status']).toUpperCase() === 'MP TRÂNSITO' ? 'bg-blue-100 text-blue-700 border border-blue-200' :
-                            String(mat['Status']).toUpperCase() === 'MPNG' ? 'bg-red-100 text-red-700 border border-red-200' :
-                            String(mat['Status']).toUpperCase() === 'VRMP' ? 'bg-indigo-100 text-indigo-700 border border-indigo-200' :
-                            'bg-gray-100 text-gray-700 border border-gray-250'
-                          }`}>
-                            {mat['Status']}
-                          </span>
+                          {(() => {
+                            const rawStatus = String(mat['Status']).toUpperCase().trim();
+                            const medida = String(mat['Medida'] || '').toUpperCase().trim();
+                            const isM2 = medida === 'M²' || medida === 'M';
+                            
+                            let label = mat['Status'];
+                            let styleClass = 'bg-gray-100 text-gray-700 border border-gray-250';
+                            
+                            if (rawStatus === 'MPOK') {
+                              if (isM2) {
+                                label = 'SEPARAÇÃO M²';
+                                styleClass = 'bg-purple-100 text-purple-700 border border-purple-200';
+                              } else {
+                                label = 'SEPARAÇÃO AVIAMENTOS';
+                                styleClass = 'bg-indigo-100 text-indigo-700 border border-indigo-200';
+                              }
+                            } else if (rawStatus === 'SOLICITADO COMPRA' || rawStatus === 'EM PROCESSO DE COMPRA') {
+                              styleClass = 'bg-orange-100 text-orange-700 border border-orange-200';
+                            } else if (rawStatus === 'MP TRÂNSITO') {
+                              styleClass = 'bg-blue-100 text-blue-700 border border-blue-200';
+                            } else if (rawStatus === 'MPNG') {
+                              styleClass = 'bg-red-100 text-red-700 border border-red-200';
+                            } else if (rawStatus === 'VRMP') {
+                              styleClass = 'bg-indigo-100 text-indigo-700 border border-indigo-200';
+                            } else if (rawStatus === 'SEPARACAO M²' || rawStatus === 'SEPARAÇÃO M²') {
+                              styleClass = 'bg-purple-100 text-purple-700 border border-purple-200';
+                            } else if (rawStatus === 'SEPARACAO AVIAMENTOS' || rawStatus === 'SEPARAÇÃO AVIAMENTOS') {
+                              styleClass = 'bg-indigo-100 text-indigo-700 border border-indigo-200';
+                            } else if (rawStatus === 'MP PENDENTE') {
+                              styleClass = 'bg-red-100 text-red-700 border border-red-200';
+                            } else if (rawStatus === 'DISPONIVEL NA CENTRAL' || rawStatus === 'DISPONÍVEL NA CENTRAL') {
+                              styleClass = 'bg-teal-100 text-teal-700 border border-teal-200';
+                            }
+                            
+                            return (
+                              <span className={`inline-block px-2.5 py-1 text-xs font-bold rounded-lg ${styleClass}`}>
+                                {label}
+                              </span>
+                            );
+                          })()}
                         </td>
                         <td className="p-3 text-sm text-gray-600 border-r border-gray-200/50 font-mono">{formatDateTime(mat['Data_Reg_Central'])}</td>
                         <td className="p-3 text-sm text-gray-600 border-r border-gray-200/50 font-mono">{formatDateTime(mat['Data_Ent_Almox.'])}</td>

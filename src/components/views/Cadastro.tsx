@@ -1064,6 +1064,7 @@ export default function Cadastro() {
                         <option value=""></option>
                         <option value="VRMP">VRMP</option>                    
                         <option value="MPNG">MPNG</option>
+                        <option value="MP PENDENTE">MP PENDENTE</option>
                         <option value="SEPARAÇÃO M²">SEPARAÇÃO M²</option>
                         <option value="SEPARAÇÃO AVIAMENTOS">SEPARAÇÃO AVIAMENTOS</option>
                       </select>

@@ -115,7 +115,7 @@ export default function CadastroEntrega() {
       
       const updateData: any = {
         id: selectedItem.id,
-        Status: 'Disponível na Central'
+        Status: 'DISPONÍVEL NA CENTRAL'
       };
 
       if (medida === 'M²' || medida === 'M') {
@@ -130,7 +130,7 @@ export default function CadastroEntrega() {
       await api.post('updatePainelData', updateData);
       dataCache.invalidate('painelData');
       
-      setMessage({ type: 'success', text: `Separação confirmada! Status atualizado para "Disponível na Central".` });
+      setMessage({ type: 'success', text: `Separação confirmada! Status atualizado para "DISPONÍVEL NA CENTRAL".` });
       
       // Remove o item da lista local ou atualiza
       const updatedItems = pendingItems.filter(item => item.id !== selectedItem.id);

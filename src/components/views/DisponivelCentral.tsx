@@ -337,7 +337,7 @@ export default function DisponivelCentral() {
                       {selectedItem['Descrição'] || 'Nenhuma descrição fornecida.'}
                     </div>
                     {selectedItem['Observação'] && (
-                      <div className="text-xs bg-orange-50/50 p-3 rounded-lg text-orange-850 border border-orange-100 leading-relaxed font-sans">
+                      <div className="text-xs bg-orange-50/50 p-3 rounded-lg text-orange-950 border border-orange-100 leading-relaxed font-sans">
                         <span className="font-bold block text-orange-600 uppercase text-[9px] mb-1">Observação:</span>
                         {selectedItem['Observação']}
                       </div>
