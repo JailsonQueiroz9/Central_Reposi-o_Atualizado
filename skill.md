@@ -71,6 +71,7 @@ Objetivo: Registo detalhado e controlo de separação interna de materiais físi
 Funcionalidades Críticas:
 - Modais de separação assistida e controlo de stock.
 - Cadastro de lotes, datas de validade da matéria-prima e contagem por prateleira física.
+- **Controle de Prioridades Integrado:** Visualização direta da coluna de "Prioridade" para rastreamento de ordens com criticidade alta ou embarque diretamente no fluxo do almoxarifado.
 
 ### 4. Cadastro de Ordens (Cadastro.tsx)
 Objetivo: Entrada assistida de novas solicitações e programação física de ordens produtivas.
@@ -84,6 +85,15 @@ Objetivo: Registo ágil de entrega de insumos direto nas células produtivas do 
 Funcionalidades Críticas:
 - Suporte à biometria por crachá e inserção ágil por leitores de código de barras físico.
 - Input auto-focado por padrão para leitura direta com scanner, mapeando dados de funcionários cadastrados instantaneamente via requisição ao backend (getUserByCracha).
+- **Separação por Categoria de Demanda:** Divisão estruturada entre abas de "M²" (Métrico de Tecidos) e "Aviamentos" (Unidades, quilos, milheiros).
+- **Controle Visual de Urgência:** Rastreamento unificado de prioridades, exibindo badges inteligentes de criticidade no painel de conferência.
+
+### 5b. Entrega Dublagem (EntregaDublagem.tsx)
+Objetivo: Tela de entrega dedicada para as equipes do setor de Dublagem.
+
+Funcionalidades Críticas:
+- **Filtro Inteligente por Setor:** Restringe e exibe exclusivamente os lotes em andamento ou separados cuja destinação final pertença ao setor de **DUBLAGEM**.
+- **Foco Operacional Estrito:** Exibição simplificada e direta focada estritamente em materiais métricos (M²) da Dublagem, otimizando o fluxo físico de separações por coletores móveis sem abas desnecessárias.
 
 ### 6. Disponível na Central (DisponivelCentral.tsx)
 Objetivo: Painel de materiais prontos libertados pela central de estocagem para entrega nas linhas fabris correspondentes.
@@ -190,3 +200,6 @@ import { SlidersHorizontal, Eye, EyeOff } from 'lucide-react';
 - **Otimização do Contêiner**: Substituído o runtime de produção pelo servidor de ficheiros estáticos sirv-cli, reduzindo o cold start no Cloud Run para milissegundos e permitindo a configuração de alocação de CPU sob demanda (redução drástica de custos).
 - **Integração com Nova Aba de Dados (`BD ASICS NOVO` / `042 BD`)**: Implementado no Apps Script o carregamento e cruzamento síncrono da tabela de apoio `BD ASICS NOVO` (ou `042 BD`), extraindo dinamicamente as colunas `AG` (Serig Giro) e `U` (Giro_Prod Cost) mapeadas pelo código chave de lote `N`, alimentando os cálculos lógicos para a determinação precisa do status "STATUS SERIGRAFIA".
 - **Tratamento Robusto de Datas**: Incluída a função utilitária `formatDateString` na visualização do PCP para parsear e converter strings longas ou instâncias de Date geradas por fuso horários diferentes (ex: "Fri Aug 14 2026 00:00:00 GMT-0300 (Horário Padrão de Brasília)") para uma representação nacional amigável de padrão `DD/MM/YYYY`, sem quebras zonais de dia.
+- **Correção nos Formulários de Entrada (Junho de 2026)**: Sanado o bug de contraste nos inputs das telas de `Login.tsx` e `Register.tsx`. O texto agora usa explicitamente a classe `text-gray-900 bg-white` para garantir legibilidade durante a digitação.
+- **Rastreamento de Prioridades em Movimentações (Junho de 2026)**: Integrada a coluna "Prioridade" (Baixa, Média, Alta, Embarque) nos painéis de controle do almoxarifado (`Almox.tsx`) e conferência de remessas (`CadastroEntrega.tsx`).
+- **Ajuste de Identidade Visual da Categoria "Embarque" (Junho de 2026)**: Reformulada a exibição visual da prioridade de maior urgência do sistema no `PriorityBadge`. O badge de embarque passou a adotar uma configuração de alto contraste (`bg-amber-100 text-black border-amber-300 font-black`) e a utilização do emoji de caminhão (🚚) no lugar do avião antigo (✈️).

@@ -13,7 +13,8 @@ import {
   MapPin, 
   Package, 
   Coins, 
-  Send 
+  Send,
+  Layers
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { dataCache } from '@/lib/cache';
@@ -141,6 +142,36 @@ export default function DisponivelCentral() {
     }
   };
 
+  const handleSendToDublagem = async (item: any) => {
+    if (!item) return;
+
+    setActionLoading(true);
+    try {
+      const now = new Date();
+      const formattedDate = `${now.getDate().toString().padStart(2, '0')}/${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getFullYear()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+
+      const updateData = {
+        id: item.id,
+        Status: 'ENTREGA DUBLAGEM',
+        Dublado: 'Sim',
+        Data_Dublagem_Envio: formattedDate
+      };
+
+      await api.post('updatePainelData', updateData);
+      dataCache.invalidate('painelData');
+      
+      setMessage({ type: 'success', text: `Material enviado com sucesso para a tela de ENTREGA DUBLAGEM!` });
+      await fetchItems();
+
+      setTimeout(() => setMessage(null), 3000);
+    } catch (error) {
+      console.error('Erro ao enviar material para dublagem:', error);
+      setMessage({ type: 'error', text: 'Erro ao enviar para dublagem. Tente novamente.' });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const formatDateTime = (dateStr: string) => {
     if (!dateStr) return '-';
     // Se já estiver formatada (ex: dd/mm/aaaa) retorna
@@ -156,7 +187,7 @@ export default function DisponivelCentral() {
 
   return (
     <div className="p-4 md:p-8 h-full bg-gray-50 overflow-y-auto custom-scrollbar flex flex-col gap-6">
-      <div className="max-w-7xl mx-auto w-full space-y-6">
+      <div className="max-w-[1600px] mx-auto w-full space-y-6">
         
         {/* Top Header Section */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -206,10 +237,10 @@ export default function DisponivelCentral() {
         </div>
 
         {/* Content Split: List & Selected Card details */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           
           {/* Left Table / List column */}
-          <div className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col">
+          <div className="lg:col-span-3 bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col">
             <div className="p-4 border-b border-gray-100 bg-gray-50/50">
               <h2 className="text-sm font-bold text-gray-700 uppercase tracking-widest">Lista de Separados para Entrega</h2>
             </div>
@@ -221,21 +252,23 @@ export default function DisponivelCentral() {
                     <th className="p-4 bg-gray-50 border-b border-gray-100 sticky top-0 z-10 text-left">Ord_Rep</th>
                     <th className="p-4 bg-gray-50 border-b border-gray-100 sticky top-0 z-10 text-left">Destinatário</th>
                     <th className="p-4 bg-gray-50 border-b border-gray-100 sticky top-0 z-10 text-left">Produto</th>
+                    <th className="p-4 bg-gray-50 border-b border-gray-100 sticky top-0 z-10 text-left">Descrição</th>
                     <th className="p-4 bg-gray-50 border-b border-gray-100 sticky top-0 z-10 text-left">Qtd.</th>
                     <th className="p-4 bg-gray-50 border-b border-gray-100 sticky top-0 z-10 text-left">Und.</th>
+                    <th className="p-4 bg-gray-50 border-b border-gray-100 sticky top-0 z-10 text-left">Dublagem</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {loading ? (
                     <tr>
-                      <td colSpan={6} className="p-8 text-center text-gray-400 font-sans">
+                      <td colSpan={8} className="p-8 text-center text-gray-400 font-sans">
                         <Loader2 className="animate-spin inline-block mr-2 text-emerald-600" size={20} />
                         Buscando dados na central...
                       </td>
                     </tr>
                   ) : filteredItems.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="p-10 text-center text-gray-400 italic font-sans">
+                      <td colSpan={8} className="p-10 text-center text-gray-400 italic font-sans">
                         Nenhum material pendente em &quot;Disponível na Central&quot;.
                       </td>
                     </tr>
@@ -262,9 +295,28 @@ export default function DisponivelCentral() {
                           {item['destinatario_cracha'] || '-'}
                         </div>
                       </td>
-                      <td className="p-4 text-sm text-gray-600 max-w-[200px] truncate" title={item['Descrição']}>{item['Produtos']}</td>
+                      <td className="p-4 text-sm text-gray-600 max-w-[150px] truncate" title={item['Produtos']}>{item['Produtos']}</td>
+                      <td className="p-4 text-sm text-gray-500 max-w-[200px] truncate" title={item['Descrição']}>{item['Descrição'] || '-'}</td>
                       <td className="p-4 text-sm font-bold text-gray-800 font-mono">{item['Qtd.']}</td>
                       <td className="p-4 text-sm text-gray-500 font-medium">{item['Medida'] || '-'}</td>
+                      <td className="p-4 text-sm whitespace-nowrap">
+                        {item['Dublado'] === 'Confirmado' ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-green-150 text-green-800 border border-green-250">
+                            Confirmado ✅
+                          </span>
+                        ) : (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSendToDublagem(item);
+                            }}
+                            className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold bg-[#483D8B]/10 hover:bg-[#483D8B] text-[#483D8B] hover:text-white rounded-lg border border-[#483D8B]/25 transition-all cursor-pointer"
+                          >
+                            <Layers size={12} />
+                            Mandar Dublar
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -332,6 +384,18 @@ export default function DisponivelCentral() {
                       <span className="text-gray-400 font-medium">Produto / Qtd:</span>
                       <span className="font-sans text-gray-800 font-bold">{selectedItem['Produtos']} ({selectedItem['Qtd.']} {selectedItem['Medida']})</span>
                     </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-400 font-medium">Dublagem:</span>
+                      {selectedItem['Dublado'] === 'Confirmado' ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-green-100 text-green-800 border border-green-200">
+                          Confirmado ✅
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                          Não Dublado / Pendente ⏳
+                        </span>
+                      )}
+                    </div>
                     <div className="text-xs bg-slate-50 p-3 rounded-lg text-gray-600 border border-slate-100 leading-relaxed font-sans">
                       <span className="font-bold block text-slate-500 uppercase text-[9px] mb-1">Descrição:</span>
                       {selectedItem['Descrição'] || 'Nenhuma descrição fornecida.'}
@@ -352,19 +416,32 @@ export default function DisponivelCentral() {
                     </div>
                   )}
 
-                  {/* Action Pagar Destinatário */}
-                  <button
-                    onClick={handlePagar}
-                    disabled={actionLoading}
-                    className="w-full mt-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 transform hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50"
-                  >
-                    {actionLoading ? (
-                      <Loader2 className="animate-spin inline-block" size={18} />
-                    ) : (
-                      <Send size={18} />
+                  {/* Action Pagar Destinatário / Mandar para Dublagem */}
+                  <div className="space-y-3 pt-2">
+                    <button
+                      onClick={handlePagar}
+                      disabled={actionLoading}
+                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 px-4 rounded-xl shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-2 transform hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 cursor-pointer"
+                    >
+                      {actionLoading ? (
+                        <Loader2 className="animate-spin inline-block" size={18} />
+                      ) : (
+                        <Send size={18} />
+                      )}
+                      <span>PAGAR AO DESTINATÁRIO</span>
+                    </button>
+
+                    {selectedItem['Dublado'] !== 'Confirmado' && (
+                      <button
+                        onClick={() => handleSendToDublagem(selectedItem)}
+                        disabled={actionLoading}
+                        className="w-full bg-[#483D8B] hover:bg-[#3b3175] text-white font-bold py-3.5 px-4 rounded-xl shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 transform hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 cursor-pointer text-sm"
+                      >
+                        <Layers size={18} />
+                        <span>MANDAR PARA DUBLAGEM</span>
+                      </button>
                     )}
-                    <span>PAGAR AO DESTINATÁRIO</span>
-                  </button>
+                  </div>
                 </div>
               ) : (
                 <div className="p-8 text-center text-gray-400 italic text-sm font-sans">

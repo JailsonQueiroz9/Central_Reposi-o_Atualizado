@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { LayoutDashboard, FileText, Activity, MessageCircle, Settings, Menu, X, LogOut, Loader2, Download, Box, ClipboardList, CalendarClock } from 'lucide-react';
+import { LayoutDashboard, FileText, Activity, MessageCircle, Settings, Menu, X, LogOut, Loader2, Download, Box, ClipboardList, CalendarClock, Layers } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { api } from './lib/api';
 import { dataCache } from './lib/cache';
@@ -13,17 +13,19 @@ import Configuracao from './components/views/Configuracao';
 import Login from './components/views/Login';
 import Register from './components/views/Register';
 import CadastroEntrega from './components/views/CadastroEntrega';
+import EntregaDublagem from './components/views/EntregaDublagem';
 import DisponivelCentral from './components/views/DisponivelCentral';
 import Producao from './components/views/Producao';
 import ProgramacaoPCP from './components/views/ProgramacaoPCP';
 
-type ViewType = 'painel' | 'cadastro' | 'almox' | 'followup' | 'chat' | 'configuracao' | 'cadastroEntrega' | 'disponivelCentral' | 'producao' | 'programacaoPCP';
+type ViewType = 'painel' | 'cadastro' | 'almox' | 'followup' | 'chat' | 'configuracao' | 'cadastroEntrega' | 'entregaDublagem' | 'disponivelCentral' | 'producao' | 'programacaoPCP';
 
 const menuItems = [
   { id: 'painel', label: 'Painel (Status)', icon: LayoutDashboard, perm: 'painel' },
   { id: 'cadastro', label: 'Cadastro', icon: FileText, perm: 'cadastro' },
-  { id: 'almox', label: 'ALMOX', icon: Box, perm: 'almx' },
+  { id: 'almox', label: 'Almox', icon: Box, perm: 'almx' },
   { id: 'cadastroEntrega', label: 'Cadastro Entrega', icon: FileText, perm: 'cadastro' },
+  { id: 'entregaDublagem', label: 'Entrega Dublagem', icon: Layers, perm: 'cadastro' },
   { id: 'disponivelCentral', label: 'Disponível na Central', icon: Box, perm: 'cadastro' },
   { id: 'producao', label: 'Produção', icon: ClipboardList, perm: 'producao' },
   { id: 'programacaoPCP', label: 'Programação PCP', icon: CalendarClock, perm: 'programacaoPCP' },
@@ -319,6 +321,7 @@ export default function App() {
       case 'cadastro': return <Cadastro />;
       case 'almox': return <Almox />;
       case 'cadastroEntrega': return <CadastroEntrega />;
+      case 'entregaDublagem': return <EntregaDublagem />;
       case 'disponivelCentral': return <DisponivelCentral />;
       case 'producao': return <Producao />;
       case 'programacaoPCP': return <ProgramacaoPCP setHeaderContent={setHeaderContent} />;
