@@ -130,8 +130,14 @@ function mockResponse(action: string, data: any) {
           }
           break;
         case 'register':
-          // Simula salvar no banco e retornar o usuário
-          resolve({ id: Date.now().toString(), nome: data.name, email: data.email, role: 'Operador' });
+          // Simula salvar no banco e retornar o usuário com permissão padrão restrita ao Painel (Status)
+          resolve({ 
+            id: Date.now().toString(), 
+            nome: data.name, 
+            email: data.email, 
+            role: 'Operador',
+            'Permissões de Tela (Módulos)': JSON.stringify({ painel: true })
+          });
           break;
         case 'getOrders':
           resolve([

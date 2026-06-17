@@ -40,7 +40,7 @@ export default function App() {
   const [authView, setAuthView] = useState<'login' | 'register'>('login');
   const [user, setUser] = useState<any>(null);
   
-  const [activeView, setActiveView] = useState<ViewType>('cadastro');
+  const [activeView, setActiveView] = useState<ViewType>('painel');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isInIframe, setIsInIframe] = useState(false);
   const [headerContent, setHeaderContent] = useState<React.ReactNode | null>(null);
@@ -93,16 +93,37 @@ export default function App() {
       try {
         const parsed = JSON.parse(perms);
         // Só retorna se for um objeto válido com chaves
-        return (parsed && typeof parsed === 'object') ? parsed : null;
+        return (parsed && typeof parsed === 'object') ? parsed : { painel: true };
       } catch (e) {
         console.error('Erro ao parsear permissões do usuário');
-        return null;
+        return { painel: true };
       }
     }
     
-    // Se for objeto, retorna, senão null
-    return (perms && typeof perms === 'object') ? perms : null;
+    if (perms && typeof perms === 'object') {
+      return perms;
+    }
+    
+    // Se não houver permissão definida (ex: usuário novo recém cadastrado), garante acesso EXCLUSIVO ao Painel
+    return { painel: true };
   }, [user]);
+
+  // Redireciona para o Painel caso o usuário tente acessar uma tela sem permissão
+  useEffect(() => {
+    if (isAuthenticated && permissions && activeView !== 'painel') {
+      const currentMenuItem = menuItems.find(item => item.id === activeView);
+      if (currentMenuItem) {
+        const hasPermission = currentMenuItem.perm === 'producao' || currentMenuItem.perm === 'programacaoPCP' 
+          ? permissions[currentMenuItem.perm as any] !== false 
+          : permissions[currentMenuItem.perm as any] === true;
+        
+        if (!hasPermission) {
+          console.warn(`[SEGURANÇA] Usuário sem permissão para acessar a tela [${activeView}]. Redirecionando para Painel (Status).`);
+          setActiveView('painel');
+        }
+      }
+    }
+  }, [activeView, permissions, isAuthenticated]);
 
   const handleLogout = () => {
     localStorage.removeItem('pcp_user');
