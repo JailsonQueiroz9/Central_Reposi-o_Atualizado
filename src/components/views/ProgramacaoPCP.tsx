@@ -1576,7 +1576,7 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
           </div>
         ) : (
           <>
-          /* Table horizontal scrolling container */
+          {/* Table horizontal scrolling container */}
           <div className="overflow-x-auto relative flex-1 overflow-y-auto border border-slate-700/60 rounded-lg min-h-0">
             <table className="min-w-max w-full text-left border-collapse select-none bg-slate-900">
               
@@ -1841,12 +1841,12 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
               </tbody>
             </table>
           </div>
-          
+
           {/* Pagination Controls */}
           {filteredWip.length > 0 && (
-            <div className="mt-3 bg-slate-850 rounded-lg p-3 border border-slate-705/85 shadow-md flex flex-col md:flex-row items-center justify-between gap-3 text-xs text-slate-300 select-none">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[11px] font-medium text-slate-400">Linhas por página:</span>
+            <div className="mt-1.5 bg-slate-850 rounded-lg py-1 px-2.5 border border-slate-705/85 shadow-md flex flex-col md:flex-row items-center justify-between gap-2 text-[10px] text-slate-300 select-none">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[10px] font-medium text-slate-400">Linhas por página:</span>
                 <select
                   value={pageSize}
                   onChange={(e) => {
@@ -1854,7 +1854,7 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
                     setPageSize(newSize);
                     setCurrentPage(1);
                   }}
-                  className="bg-slate-900 border border-slate-700 hover:border-slate-600 rounded px-2 py-0.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500 font-bold transition-all cursor-pointer h-7"
+                  className="bg-slate-900 border border-slate-700 hover:border-slate-600 rounded px-1.5 py-0 text-[10px] text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500 font-bold transition-all cursor-pointer h-5.5"
                 >
                   <option value={50}>50</option>
                   <option value={100}>100</option>
@@ -1863,12 +1863,12 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
                   <option value={-1}>Ver todas</option>
                 </select>
                 
-                <span className="text-[11px] text-slate-400 ml-1">
-                  Exibindo <strong>{Math.min(filteredWip.length, (safeCurrentPage - 1) * (pageSize === -1 ? filteredWip.length : pageSize) + 1)}</strong> a <strong>{Math.min(filteredWip.length, safeCurrentPage * (pageSize === -1 ? filteredWip.length : pageSize))}</strong> de <strong>{filteredWip.length}</strong> {filteredWip.length === 1 ? 'linha' : 'linhas'} filtradas
+                <span className="text-[10px] text-slate-400 ml-0.5">
+                  Exibindo <strong>{Math.min(filteredWip.length, (safeCurrentPage - 1) * (pageSize === -1 ? filteredWip.length : pageSize) + 1)}</strong> a <strong>{Math.min(filteredWip.length, safeCurrentPage * (pageSize === -1 ? filteredWip.length : pageSize))}</strong> de <strong>{filteredWip.length}</strong> {filteredWip.length === 1 ? 'linha' : 'linhas'}
                 </span>
                 {pageSize === -1 && (
-                  <span className="text-[10px] text-amber-500 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded font-bold uppercase ml-1">
-                     Carregar todas as linhas pode reduzir o desempenho
+                  <span className="text-[9px] text-amber-500 bg-amber-500/10 border border-amber-500/20 px-1 py-0.5 rounded font-extrabold uppercase ml-0.5 tracking-tight">
+                     Carregar tudo pode reduzir desempenho
                   </span>
                 )}
               </div>
@@ -1878,18 +1878,18 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
                   <button
                     onClick={() => setCurrentPage(1)}
                     disabled={safeCurrentPage === 1}
-                    className="p-1.5 rounded bg-slate-900 hover:bg-slate-750 text-slate-300 disabled:opacity-35 disabled:hover:bg-slate-900 disabled:cursor-not-allowed border border-slate-700 transition-colors cursor-pointer flex items-center justify-center font-bold"
+                    className="p-1 rounded bg-slate-900 hover:bg-slate-750 text-slate-300 disabled:opacity-35 disabled:hover:bg-slate-900 disabled:cursor-not-allowed border border-slate-700 transition-colors cursor-pointer flex items-center justify-center font-bold h-5.5 w-5.5"
                     title="Primeira Página"
                   >
-                    <ChevronsLeft size={13} />
+                    <ChevronsLeft size={11} />
                   </button>
                   <button
                     onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                     disabled={safeCurrentPage === 1}
-                    className="p-1.5 rounded bg-slate-900 hover:bg-slate-750 text-slate-300 disabled:opacity-35 disabled:hover:bg-slate-900 disabled:cursor-not-allowed border border-slate-700 transition-colors cursor-pointer flex items-center justify-center font-bold"
+                    className="p-1 rounded bg-slate-900 hover:bg-slate-750 text-slate-300 disabled:opacity-35 disabled:hover:bg-slate-900 disabled:cursor-not-allowed border border-slate-700 transition-colors cursor-pointer flex items-center justify-center font-bold h-5.5 w-5.5"
                     title="Página Anterior"
                   >
-                    <ChevronLeft size={13} />
+                    <ChevronLeft size={11} />
                   </button>
                   
                   {/* Page numbers */}
@@ -1904,13 +1904,13 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
                           <button
                             key={1}
                             onClick={() => setCurrentPage(1)}
-                            className="w-7 h-7 text-xs rounded border border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-750 font-bold transition-all cursor-pointer"
+                            className="w-5.5 h-5.5 text-[9px] rounded border border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-750 font-bold transition-all cursor-pointer flex items-center justify-center"
                           >
                             1
                           </button>
                         );
                         if (start > 2) {
-                          list.push(<span key="ellipsis-start" className="px-1 text-[10px] text-slate-500 font-bold">...</span>);
+                          list.push(<span key="ellipsis-start" className="px-0.5 text-[9px] text-slate-500 font-bold">...</span>);
                         }
                       }
                       
@@ -1920,7 +1920,7 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
                           <button
                             key={i}
                             onClick={() => setCurrentPage(i)}
-                            className={`w-7 h-7 text-xs rounded font-bold transition-all cursor-pointer ${
+                            className={`w-5.5 h-5.5 text-[9px] rounded font-bold transition-all cursor-pointer flex items-center justify-center ${
                               isCurrent
                                 ? 'bg-amber-500 text-slate-950 border border-amber-600 shadow-md'
                                 : 'border border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-750'
@@ -1933,13 +1933,13 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
                       
                       if (end < totalPages) {
                         if (end < totalPages - 1) {
-                          list.push(<span key="ellipsis-end" className="px-1 text-[10px] text-slate-500 font-bold">...</span>);
+                          list.push(<span key="ellipsis-end" className="px-0.5 text-[9px] text-slate-500 font-bold">...</span>);
                         }
                         list.push(
                           <button
                             key={totalPages}
                             onClick={() => setCurrentPage(totalPages)}
-                            className="w-7 h-7 text-xs rounded border border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-750 font-bold transition-all cursor-pointer"
+                            className="w-5.5 h-5.5 text-[9px] rounded border border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-750 font-bold transition-all cursor-pointer flex items-center justify-center"
                           >
                             {totalPages}
                           </button>
@@ -1953,18 +1953,18 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
                   <button
                     onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
                     disabled={safeCurrentPage === totalPages}
-                    className="p-1.5 rounded bg-slate-900 hover:bg-slate-750 text-slate-300 disabled:opacity-35 disabled:hover:bg-slate-900 disabled:cursor-not-allowed border border-slate-700 transition-colors cursor-pointer flex items-center justify-center font-bold"
+                    className="p-1 rounded bg-slate-900 hover:bg-slate-750 text-slate-300 disabled:opacity-35 disabled:hover:bg-slate-900 disabled:cursor-not-allowed border border-slate-700 transition-colors cursor-pointer flex items-center justify-center font-bold h-5.5 w-5.5"
                     title="Próxima Página"
                   >
-                    <ChevronRight size={13} />
+                    <ChevronRight size={11} />
                   </button>
                   <button
                     onClick={() => setCurrentPage(totalPages)}
                     disabled={safeCurrentPage === totalPages}
-                    className="p-1.5 rounded bg-slate-900 hover:bg-slate-750 text-slate-300 disabled:opacity-35 disabled:hover:bg-slate-900 disabled:cursor-not-allowed border border-slate-700 transition-colors cursor-pointer flex items-center justify-center font-bold"
+                    className="p-1 rounded bg-slate-900 hover:bg-slate-750 text-slate-300 disabled:opacity-35 disabled:hover:bg-slate-900 disabled:cursor-not-allowed border border-slate-700 transition-colors cursor-pointer flex items-center justify-center font-bold h-5.5 w-5.5"
                     title="Última Página"
                   >
-                    <ChevronsRight size={13} />
+                    <ChevronsRight size={11} />
                   </button>
                 </div>
               )}
