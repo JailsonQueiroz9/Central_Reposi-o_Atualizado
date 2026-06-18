@@ -26,7 +26,8 @@ import {
   Info,
   Eye,
   EyeOff,
-  GripVertical
+  GripVertical,
+  Trash2
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { dataCache } from '@/lib/cache';
@@ -122,9 +123,9 @@ const formatDateString = (valStr: string): string => {
   return valStr;
 };
 
-// Function to subtract working days (Monday-Saturday, skipping Sundays)
-// Note: Sunday is index 0 in Javascript getDay()
-const calculateRetroDates = (originalDateStr: string): { [key: string]: string } => {
+// Function to subtract working days (Monday-Friday, skipping Saturdays, Sundays and custom holidays/vacation)
+// Note: Sunday is index 0 and Saturday is index 6 in Javascript getDay()
+const calculateRetroDates = (originalDateStr: string, customDates?: { date: string; type: string }[]): { [key: string]: string } => {
   const parseDate = (str: string): Date | null => {
     if (!str) return null;
     const trimmed = str.trim();
@@ -155,7 +156,16 @@ const calculateRetroDates = (originalDateStr: string): { [key: string]: string }
     let count = 0;
     while (count < numDays) {
       d.setDate(d.getDate() - 1);
-      if (d.getDay() !== 0) { // skip Sunday
+      
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const dStr = `${year}-${month}-${day}`; // YYYY-MM-DD
+      
+      const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+      const isCustomOffDay = customDates && customDates.some(c => c.date === dStr);
+      
+      if (!isWeekend && !isCustomOffDay) {
         count++;
       }
     }
@@ -180,13 +190,28 @@ const calculateRetroDates = (originalDateStr: string): { [key: string]: string }
   };
 };
 
+const isCorteDateColumn = (col: string): boolean => {
+  if (!col) return false;
+  const norm = col.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+  return norm.includes("corte") && (
+    norm.includes("data") || 
+    norm.includes("inicio") || 
+    norm.includes("automatico") || 
+    norm.includes("auto")
+  );
+};
+
 const setFieldsWithNormalization = (obj: any, fields: { [key: string]: string }) => {
   for (const [colTitle, value] of Object.entries(fields)) {
     let foundKey = colTitle;
     const normTitle = colTitle.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+    const isCorteDateTitle = isCorteDateColumn(normTitle);
+    
     for (const actualKey of Object.keys(obj)) {
       const normActual = actualKey.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-      if (normTitle === normActual || (normTitle.includes("corte") && normActual.includes("corte"))) {
+      const isCorteDateActual = isCorteDateColumn(normActual);
+      
+      if (normTitle === normActual || (isCorteDateTitle && isCorteDateActual)) {
         foundKey = actualKey;
         break;
       }
@@ -203,10 +228,12 @@ const getVal = (item: any, columnTitle: string): string => {
     rawVal = String(item[columnTitle]);
   } else {
     const normTitle = columnTitle.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+    const isCorteDateTitle = isCorteDateColumn(normTitle);
     let found = false;
     for (const actualKey of Object.keys(item)) {
       const normActual = actualKey.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-      if (normTitle === normActual) {
+      const isCorteDateActual = isCorteDateColumn(normActual);
+      if (normTitle === normActual || (isCorteDateTitle && isCorteDateActual)) {
         rawVal = String(item[actualKey]);
         found = true;
         break;
@@ -348,6 +375,125 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
   const [wipItems, setWipItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
+  // Custom states for holidays and vacations
+  const [holidaysVacations, setHolidaysVacations] = useState<{ id: string; date: string; type: 'feriado' | 'ferias'; description: string }[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('pcp_holidays_vacations');
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch (e) {
+          console.warn("Erro ao carregar feriados e férias de localStorage", e);
+        }
+      }
+    }
+    return [];
+  });
+  const [showHolidaysModal, setShowHolidaysModal] = useState(false);
+  
+  // Form states and handlers for holidays/vacation config modal
+  const [newHolidayDate, setNewHolidayDate] = useState('');
+  const [newHolidayType, setNewHolidayType] = useState<'feriado' | 'ferias'>('feriado');
+  const [newHolidayDesc, setNewHolidayDesc] = useState('');
+  const [holidayError, setHolidayError] = useState<string | null>(null);
+
+  const handleAddHoliday = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newHolidayDate) return;
+    
+    const exists = holidaysVacations.some(h => h.date === newHolidayDate);
+    if (exists) {
+      setHolidayError("Esta data já foi cadastrada!");
+      setTimeout(() => setHolidayError(null), 4000);
+      return;
+    }
+
+    const newItem = {
+      id: `cal-${Date.now()}`,
+      date: newHolidayDate,
+      type: newHolidayType,
+      description: newHolidayDesc.trim() || (newHolidayType === 'feriado' ? 'Feriado' : 'Férias / Folga')
+    };
+
+    const updated = [...holidaysVacations, newItem].sort((a, b) => a.date.localeCompare(b.date));
+    setHolidaysVacations(updated);
+    localStorage.setItem('pcp_holidays_vacations', JSON.stringify(updated));
+    
+    // Reset form
+    setNewHolidayDate('');
+    setNewHolidayDesc('');
+    setHolidayError(null);
+  };
+
+  const handleDeleteHoliday = (id: string) => {
+    const updated = holidaysVacations.filter(h => h.id !== id);
+    setHolidaysVacations(updated);
+    localStorage.setItem('pcp_holidays_vacations', JSON.stringify(updated));
+  };
+
+  const handleRecalculateAllRows = async () => {
+    setLoading(true);
+    let count = 0;
+    try {
+      const updatedRows = await Promise.all(wipItems.map(async (row) => {
+        let originalDateValue = '';
+        let foundKey = '';
+        const normOriginal = "data original";
+        for (const actualKey of Object.keys(row)) {
+          const normActual = actualKey.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+          if (normOriginal === normActual) {
+            foundKey = actualKey;
+            originalDateValue = String(row[actualKey]);
+            break;
+          }
+        }
+        
+        if (!originalDateValue) return row;
+
+        const calculated = calculateRetroDates(originalDateValue, holidaysVacations);
+        let updatedRow = { ...row };
+        setFieldsWithNormalization(updatedRow, calculated);
+        
+        try {
+          await api.post('savePCPData', {
+            id: row.id,
+            sheetName: 'Wip042',
+            data: updatedRow
+          });
+          count++;
+        } catch (e) {
+          console.warn(`Error background saving item ${row.id}`, e);
+        }
+        
+        return updatedRow;
+      }));
+
+      // Cache all recalculated rows in local storage to preserve updates across pages!
+      const savedEdits = localStorage.getItem('pcp_local_row_edits');
+      const localEdits = savedEdits ? JSON.parse(savedEdits) : {};
+      updatedRows.forEach(row => {
+        localEdits[row.id] = {
+          ...(localEdits[row.id] || {}),
+          ...row
+        };
+      });
+      localStorage.setItem('pcp_local_row_edits', JSON.stringify(localEdits));
+
+      setWipItems(updatedRows);
+      setFeedback({ 
+        type: 'success', 
+        text: `Recalculado com sucesso: ${count} OPs atualizadas no banco e na tela com o novo calendário!` 
+      });
+      setTimeout(() => setFeedback(null), 5000);
+      setShowHolidaysModal(false);
+    } catch (e) {
+      console.error(e);
+      setFeedback({ type: 'error', text: 'Erro ao recalcular as datas do PCP.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  
   // Custom filter states
   const [searchTerm, setSearchTerm] = useState('');
   const [searchInput, setSearchInput] = useState(''); // Local search state for debouncing
@@ -372,6 +518,8 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(100); // 100 rows per page default
+  const [isAutoLoading, setIsAutoLoading] = useState(false);
+  const observerRef = useRef<IntersectionObserver | null>(null);
   
   // Debounce search input for instant, lag-free typing performance
   useEffect(() => {
@@ -512,6 +660,18 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
               )}
             </button>
             <button 
+              onClick={() => setShowHolidaysModal(true)}
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-705 text-slate-100 rounded-lg flex items-center gap-1.5 text-[10px] md:text-[11px] font-bold transition-all shadow-md cursor-pointer"
+            >
+              <CalendarDays size={12} className="text-amber-500" />
+              <span>Feriados e Férias</span>
+              {holidaysVacations.length > 0 && (
+                <span className="bg-amber-500 text-slate-950 font-extrabold text-[9px] rounded-full px-1.5 py-0.2 select-none">
+                  {holidaysVacations.length}
+                </span>
+              )}
+            </button>
+            <button 
               onClick={handleExportCSV}
               className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-705 text-slate-100 rounded-lg flex items-center gap-1.5 text-[10px] md:text-[11px] font-bold transition-all shadow-md cursor-pointer"
             >
@@ -548,7 +708,7 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
         setHeaderContent(null);
       }
     };
-  }, [setHeaderContent, hideHeaderPanels, loading, searchTerm, selectedWeeks, selectedBrands, selectedStatusOpers, selectedLines]);
+  }, [setHeaderContent, hideHeaderPanels, loading, searchTerm, selectedWeeks, selectedBrands, selectedStatusOpers, selectedLines, holidaysVacations.length]);
 
   const visibleColumns = useMemo(() => {
     const list = columnOrder.filter(col => !hiddenColumns.includes(col));
@@ -597,15 +757,56 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
         return item;
       });
 
-      setWipItems(enriched);
+      // Retrieve locally saved edits to merge them and maintain offline persistence across page refreshes
+      let localEdits: { [key: string]: any } = {};
+      if (typeof window !== 'undefined') {
+        const savedEdits = localStorage.getItem('pcp_local_row_edits');
+        if (savedEdits) {
+          try {
+            localEdits = JSON.parse(savedEdits);
+          } catch(e) {
+            console.error("Error loading local row edits:", e);
+          }
+        }
+      }
+
+      const mergedWithLocal = enriched.map((item: any) => {
+        if (localEdits[item.id]) {
+          return { ...item, ...localEdits[item.id] };
+        }
+        return item;
+      });
+
+      setWipItems(mergedWithLocal);
     } catch (err) {
       console.error('Erro ao buscar dados do WIP (PCP):', err);
       // Fallback directly to 3 full size mock rows matching screenshot
-      setWipItems([
+      const fallbackData = [
         getEnrichedMockRow({ Ordem: '1407124', Marca: 'ASICS', 'Semana': '25' }, 0),
         getEnrichedMockRow({ Ordem: '1407315', Marca: 'ASICS', 'Semana': '25' }, 1),
         getEnrichedMockRow({ Ordem: '1407352', Marca: 'ASICS', 'Semana': '27' }, 2)
-      ]);
+      ];
+
+      let localEdits: { [key: string]: any } = {};
+      if (typeof window !== 'undefined') {
+        const savedEdits = localStorage.getItem('pcp_local_row_edits');
+        if (savedEdits) {
+          try {
+            localEdits = JSON.parse(savedEdits);
+          } catch(e) {
+            console.error("Error loading local row edits:", e);
+          }
+        }
+      }
+
+      const mergedFallback = fallbackData.map((item: any) => {
+        if (localEdits[item.id]) {
+          return { ...item, ...localEdits[item.id] };
+        }
+        return item;
+      });
+
+      setWipItems(mergedFallback);
     } finally {
       if (!silent) setLoading(false);
     }
@@ -651,6 +852,17 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
       // Update local state
       setWipItems(prev => prev.map(item => item.id === editingItem.id ? updatedItem : item));
 
+      // Persist in local storage for absolute robustness/refresh proof!
+      if (typeof window !== 'undefined') {
+        const savedEdits = localStorage.getItem('pcp_local_row_edits');
+        const localEdits = savedEdits ? JSON.parse(savedEdits) : {};
+        localEdits[editingItem.id] = {
+          ...(localEdits[editingItem.id] || {}),
+          ...updatedItem
+        };
+        localStorage.setItem('pcp_local_row_edits', JSON.stringify(localEdits));
+      }
+
       // Attempt endpoint save
       try {
         await api.post('savePCPData', {
@@ -675,6 +887,8 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
 
   // Handle saving of one single cell edited inline
   const handleInlineSave = async (item: any, column: string, newValue: string) => {
+    let updatedRowResult: any = null;
+
     setWipItems(prev => prev.map(row => {
       if (row.id === item.id) {
         let updatedRow = { ...row };
@@ -691,10 +905,11 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
 
         // If updating DATA ORIGINAL, auto recalculate and assign retroactive dates!
         if (normTitle === "data original") {
-          const calculated = calculateRetroDates(newValue);
+          const calculated = calculateRetroDates(newValue, holidaysVacations);
           setFieldsWithNormalization(updatedRow, calculated);
         }
 
+        updatedRowResult = updatedRow;
         return updatedRow;
       }
       return row;
@@ -702,33 +917,47 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
 
     setInlineEdit(null);
 
-    // Save in background
+    // Save in background and client storage
     try {
-      let updatedRow = { ...item };
-      let foundKey = column;
-      const normTitle = column.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-      for (const actualKey of Object.keys(updatedRow)) {
-        const normActual = actualKey.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-        if (normTitle === normActual) {
-          foundKey = actualKey;
-          break;
+      let finalRow = updatedRowResult;
+      if (!finalRow) {
+        finalRow = { ...item };
+        let foundKey = column;
+        const normTitle = column.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+        for (const actualKey of Object.keys(finalRow)) {
+          const normActual = actualKey.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+          if (normTitle === normActual) {
+            foundKey = actualKey;
+            break;
+          }
+        }
+        finalRow[foundKey] = newValue;
+
+        if (normTitle === "data original") {
+          const calculated = calculateRetroDates(newValue, holidaysVacations);
+          setFieldsWithNormalization(finalRow, calculated);
         }
       }
-      updatedRow[foundKey] = newValue;
 
-      // Keep background save synchronized!
-      if (normTitle === "data original") {
-        const calculated = calculateRetroDates(newValue);
-        setFieldsWithNormalization(updatedRow, calculated);
+      // 1. Persist in local storage for absolute robustness/refresh proof!
+      if (typeof window !== 'undefined') {
+        const savedEdits = localStorage.getItem('pcp_local_row_edits');
+        const localEdits = savedEdits ? JSON.parse(savedEdits) : {};
+        localEdits[item.id] = {
+          ...(localEdits[item.id] || {}),
+          ...finalRow
+        };
+        localStorage.setItem('pcp_local_row_edits', JSON.stringify(localEdits));
       }
-      
+
+      // 2. Persist in Google Sheets (or fallback database)
       await api.post('savePCPData', {
         id: item.id,
         sheetName: 'Wip042',
-        data: updatedRow
+        data: finalRow
       });
     } catch(e) {
-      console.log('Background save updated inline.');
+      console.log('Background save updated inline with local storage backup sync.', e);
     }
   };
 
@@ -826,6 +1055,44 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
     const startIndex = (currentPage - 1) * pageSize;
     return filteredWip.slice(startIndex, startIndex + pageSize);
   }, [filteredWip, currentPage, pageSize]);
+
+  // Infinite scroll / auto-load more rows on reaching the bottom of the current view
+  const lastRowRef = (node: HTMLTableRowElement | null) => {
+    if (loading || isAutoLoading) return;
+    if (observerRef.current) observerRef.current.disconnect();
+
+    if (node) {
+      observerRef.current = new IntersectionObserver(([entry]) => {
+        if (entry.isIntersecting) {
+          if (paginatedWip.length < filteredWip.length) {
+            setIsAutoLoading(true);
+            // Brief timeout for standard smooth organic loading indicator display
+            setTimeout(() => {
+              setPageSize(prev => {
+                if (prev === -1) return -1;
+                // Append next batch of 150 rows automatically!
+                return prev + 150;
+              });
+              setIsAutoLoading(false);
+            }, 250);
+          }
+        }
+      }, {
+        rootMargin: '150px', // Trigger slightly ahead of time for ultimate seamlessness
+        threshold: 0.1
+      });
+      observerRef.current.observe(node);
+    }
+  };
+
+  // Disconnect the intersection observer on unmount
+  useEffect(() => {
+    return () => {
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+      }
+    };
+  }, []);
 
   const totalItems = filteredWip.length;
   const totalPages = pageSize === -1 ? 1 : Math.ceil(totalItems / pageSize);
@@ -1082,6 +1349,18 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
             >
               <Download size={12} />
               Exportar Planejamento
+            </button>
+            <button 
+              onClick={() => setShowHolidaysModal(true)}
+              className="px-2.5 py-1.5 bg-slate-705 hover:bg-slate-600 border border-slate-600 text-slate-100 rounded-lg flex items-center gap-1.5 text-[10.5px] md:text-xs font-bold transition-all shadow-md cursor-pointer"
+            >
+              <CalendarDays size={12} className="text-amber-500" />
+              <span>Feriados e Férias</span>
+              {holidaysVacations.length > 0 && (
+                <span className="bg-amber-500 text-slate-950 font-extrabold text-[9px] rounded-full px-1.5 py-0.2 select-none">
+                  {holidaysVacations.length}
+                </span>
+              )}
             </button>
             <button 
               onClick={() => fetchWipData(false, true)}
@@ -1673,6 +1952,7 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
                   return (
                     <tr 
                       key={item.id || `row-${rowIdx}`} 
+                      ref={rowIdx === paginatedWip.length - 1 ? lastRowRef : undefined}
                       onClick={() => setSelectedRowId(isSelected ? null : item.id)}
                       draggable
                       onDragStart={(e) => {
@@ -1869,6 +2149,12 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
                 {pageSize === -1 && (
                   <span className="text-[9px] text-amber-500 bg-amber-500/10 border border-amber-500/20 px-1 py-0.5 rounded font-extrabold uppercase ml-0.5 tracking-tight">
                      Carregar tudo pode reduzir desempenho
+                  </span>
+                )}
+                {isAutoLoading && (
+                  <span className="text-[9.5px] text-amber-400 bg-amber-500/15 border border-amber-500/20 px-2 py-0.5 rounded flex items-center gap-1.5 font-bold animate-pulse ml-1.5">
+                    <Loader2 className="animate-spin text-amber-500" size={10} />
+                    Carregando mais 150 linhas automaticamente...
                   </span>
                 )}
               </div>
@@ -2106,14 +2392,14 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
                           setFormFields(prev => {
                             let updated = { ...prev, [col]: val };
                             if (col === "DATA ORIGINAL") {
-                              const calculated = calculateRetroDates(val);
+                              const calculated = calculateRetroDates(val, holidaysVacations);
                               for (const [calcCol, calcVal] of Object.entries(calculated)) {
                                 let matchCol = calcCol;
                                 const normCalc = calcCol.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
                                 
                                 for (const key of Object.keys(prev)) {
                                   const normKey = key.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-                                  if (normKey === normCalc || (normCalc.includes("corte") && normKey.includes("corte"))) {
+                                  if (normKey === normCalc || (isCorteDateColumn(normCalc) && isCorteDateColumn(normKey))) {
                                     matchCol = key;
                                     break;
                                   }
@@ -2179,6 +2465,199 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
                   </>
                 ) : 'Gravar Alterações'}
               </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* Holidays and Vacations Registration Modal */}
+      {showHolidaysModal && (
+        <div id="holidays-config-modal" className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/75 backdrop-blur-md" onClick={() => setShowHolidaysModal(false)} />
+          <div className="bg-slate-900 text-slate-100 rounded-2xl border border-slate-700 shadow-2xl w-full max-w-3xl relative z-10 overflow-hidden flex flex-col max-h-[85vh]">
+            
+            {/* Header */}
+            <div className="bg-slate-950 p-5 border-b border-slate-800 flex justify-between items-center">
+              <div>
+                <h3 className="font-extrabold text-base md:text-lg text-amber-450 flex items-center gap-2">
+                  <CalendarDays size={20} className="text-amber-500" />
+                  Calendário de Feriados & Férias — PCP
+                </h3>
+                <p className="text-slate-400 text-xs mt-0.5">
+                  Cadastre as datas de folga para calibrar corretamente as regras de desconto de dias úteis.
+                </p>
+              </div>
+              <button 
+                onClick={() => setShowHolidaysModal(false)}
+                className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg transition-colors border border-slate-800"
+              >
+                <CloseIcon size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body: Split Form and List */}
+            <div className="flex-1 overflow-y-auto p-5 md:p-6 grid grid-cols-1 md:grid-cols-12 gap-6">
+              
+              {/* Left Column: Form (cols 5) */}
+              <div className="md:col-span-12 lg:col-span-5 space-y-4">
+                <h4 className="text-xs font-black uppercase text-amber-500 tracking-wider pb-1.5 border-b border-slate-800 flex items-center gap-1">
+                  <span>Cadastrar Nova Folga</span>
+                </h4>
+                
+                <form onSubmit={handleAddHoliday} className="space-y-4 bg-slate-950/40 p-4 rounded-xl border border-slate-800/60 shadow-inner">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Data da Folga</label>
+                    <input
+                      type="date"
+                      required
+                      value={newHolidayDate}
+                      onChange={(e) => setNewHolidayDate(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:ring-1 focus:ring-amber-500 font-mono font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Tipo de Evento</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setNewHolidayType('feriado')}
+                        className={`py-1.5 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                          newHolidayType === 'feriado'
+                            ? 'bg-blue-500/15 border-blue-500 text-blue-300 font-black'
+                            : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        Feriado
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setNewHolidayType('ferias')}
+                        className={`py-1.5 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
+                          newHolidayType === 'ferias'
+                            ? 'bg-emerald-500/15 border-emerald-500 text-emerald-300 font-black'
+                            : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        Férias / Folga
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Descrição / Nome</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: Ano Novo, Carnaval, Folga Setor"
+                      value={newHolidayDesc}
+                      onChange={(e) => setNewHolidayDesc(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white outline-none focus:ring-1 focus:ring-amber-500 font-bold placeholder:text-slate-600"
+                    />
+                  </div>
+
+                  {holidayError && (
+                    <div className="bg-rose-500/10 text-rose-350 border border-rose-500/25 p-2 rounded-lg text-[10.5px] font-bold text-center animate-pulse">
+                      {holidayError}
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    className="w-full py-2 bg-amber-550 hover:bg-amber-605 text-amber-950 text-xs font-black uppercase tracking-wider rounded-lg shadow-md flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                  >
+                    <Plus size={14} />
+                    Adicionar ao Calendário
+                  </button>
+                </form>
+              </div>
+
+              {/* Right Column: List of Dates (cols 7) */}
+              <div className="md:col-span-12 lg:col-span-7 flex flex-col space-y-3 min-h-[250px]">
+                <h4 className="text-xs font-black uppercase text-amber-500 tracking-wider pb-1.5 border-b border-slate-800 flex justify-between items-center">
+                  <span>Datas Cadastradas ({holidaysVacations.length})</span>
+                  {holidaysVacations.length > 0 && (
+                    <span className="text-[9px] font-normal text-slate-450 normal-case">Ordem cronológica</span>
+                  )}
+                </h4>
+
+                <div className="flex-1 bg-slate-950/40 border border-slate-800 rounded-xl overflow-hidden flex flex-col">
+                  {holidaysVacations.length === 0 ? (
+                    <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-500">
+                      <CalendarDays size={32} className="text-slate-700 mb-2.5" />
+                      <p className="text-xs font-bold text-slate-400">Nenhuma folga cadastrada</p>
+                      <p className="text-[10.5px] text-slate-550 mt-1 max-w-[240px]">
+                        Utilize o formulário ao lado para programar folgas, feriados ou férias coletivas.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="flex-1 overflow-y-auto divide-y divide-slate-805 max-h-[300px]">
+                      {holidaysVacations.map((item) => {
+                        // Format date to DD/MM/YYYY for UI
+                        const [y, m, d] = item.date.split('-');
+                        const dateFormatted = `${d}/${m}/${y}`;
+                        
+                        return (
+                          <div key={item.id} className="flex justify-between items-center p-2.5 hover:bg-slate-900/60 transition-colors">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <span className="font-mono text-xs font-black text-white shrink-0">{dateFormatted}</span>
+                              <span className={`px-1.5 py-0.5 rounded text-[8.5px] font-black uppercase tracking-wider shrink-0 ${
+                                item.type === 'feriado'
+                                  ? 'bg-blue-500/10 text-blue-450 border border-blue-550/20'
+                                  : 'bg-emerald-500/10 text-emerald-450 border border-emerald-550/20'
+                              }`}>
+                                {item.type === 'feriado' ? 'Feriado' : 'Férias / Folga'}
+                              </span>
+                              <span className="text-[10.5px] font-bold text-slate-400 truncate max-w-[124px] md:max-w-[180px]" title={item.description}>
+                                {item.description}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteHoliday(item.id)}
+                              className="p-1 hover:bg-rose-500/15 text-slate-500 hover:text-rose-450 rounded cursor-pointer transition-colors shrink-0"
+                              title="Excluir folga"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+            </div>
+
+            {/* Bottom Bar containing bulk calculation option */}
+            <div className="bg-slate-950 px-5 py-4 border-t border-slate-850 flex flex-col sm:flex-row justify-between items-center gap-3.5">
+              <div className="flex items-start gap-2 max-w-[420px] text-left">
+                <Info size={14} className="text-amber-550 flex-shrink-0 mt-0.5" />
+                <p className="text-[9.5px]/[13.5px] text-slate-450 font-medium">
+                  As folgas cadastradas são salvas persistentemente e <strong className="text-slate-350">não se apagam ao sair</strong>. Clique no botão de recalcular para reprocessar todas as datas de recuo do grid que dependem de datas originais.
+                </p>
+              </div>
+              <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
+                {holidaysVacations.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleRecalculateAllRows}
+                    disabled={loading}
+                    className="px-3.5 py-2 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-550/30 text-amber-400 text-xs font-black uppercase tracking-wider rounded-lg shadow-sm flex items-center gap-2 cursor-pointer transition-all shrink-0"
+                  >
+                    <RefreshCcw size={12} className={loading ? "animate-spin" : ""} />
+                    Recalcular OPs do Grid
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowHolidaysModal(false)}
+                  className="px-5 py-2 border border-slate-700 text-slate-350 hover:bg-slate-900 text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                >
+                  Fechar
+                </button>
+              </div>
             </div>
 
           </div>

@@ -182,43 +182,51 @@ function getMaterialByProduto(data) {
 }
 
 function savePCPData(data) {
+  // If editing/saving a WIP row (PCP) in 'Wip042'
+  if (data && (data.sheetName || data.data)) {
+    var sheetName = data.sheetName || 'Wip042';
+    var actualData = data.data || data;
+    var id = data.id || actualData.id || actualData.ID;
+    return updateRow(sheetName, id, actualData);
+  }
+
   var flatData = {
-    id: data.id || Utilities.getUuid(),
-    solicitante_barcode: data.solicitante.barcode,
-    solicitante_nome: data.solicitante.nome,
-    solicitante_funcao: data.solicitante.funcao,
-    solicitante_setor: data.solicitante.setor,
-    solicitante_descCel: data.solicitante.descCel,
-    solicitante_codCracha: data.solicitante.codCracha,
-    solicitante_predio: data.solicitante.predio,
-    solicitante_celula: data.solicitante.celula,
-    solicitante_turno: data.solicitante.turno,
-    destinatario_barcode: data.destinatario.barcode,
-    destinatario_nome: data.destinatario.nome,
-    destinatario_funcao: data.destinatario.funcao,
-    destinatario_setor: data.destinatario.setor,
-    destinatario_descCel: data.destinatario.descCel,
-    destinatario_codCracha: data.destinatario.codCracha,
-    destinatario_predio: data.destinatario.predio,
-    destinatario_celula: data.destinatario.celula,
-    destinatario_turno: data.destinatario.turno,
-    ordem_pai: data.ordem.pai,
-    ordem_rep: data.ordem.rep,
-    ordem_req: data.ordem.req,
-    ordem_prioridade: data.ordem.prioridade,
-    ordem_marca: data.ordem.marca,
-    ordem_modelo: data.ordem.modelo,
-    ordem_combinacao: data.ordem.combinacao,
-    ordem_documento: data.ordem.documento,
-    ordem_tipo: data.ordem.tipo,
-    ordem_dataFecha: data.ordem.dataFecha,
-    ordem_semana: data.ordem.semana,
-    ordem_giro: data.ordem.giro,
-    entrega_barcode: data.entrega.barcode,
-    entrega_nome: data.entrega.nome,
-    entrega_descCel: data.entrega.descCel,
-    entrega_turno: data.entrega.turno,
-    entrega_funcao: data.entrega.funcao
+    id: (data && data.id) || Utilities.getUuid(),
+    solicitante_barcode: (data && data.solicitante) ? data.solicitante.barcode : '',
+    solicitante_nome: (data && data.solicitante) ? data.solicitante.nome : '',
+    solicitante_funcao: (data && data.solicitante) ? data.solicitante.funcao : '',
+    solicitante_setor: (data && data.solicitante) ? data.solicitante.setor : '',
+    solicitante_descCel: (data && data.solicitante) ? data.solicitante.descCel : '',
+    solicitante_codCracha: (data && data.solicitante) ? data.solicitante.codCracha : '',
+    solicitante_predio: (data && data.solicitante) ? data.solicitante.predio : '',
+    solicitante_celula: (data && data.solicitante) ? data.solicitante.celula : '',
+    solicitante_turno: (data && data.solicitante) ? data.solicitante.turno : '',
+    destinatario_barcode: (data && data.destinatario) ? data.destinatario.barcode : '',
+    destinatario_nome: (data && data.destinatario) ? data.destinatario.nome : '',
+    destinatario_funcao: (data && data.destinatario) ? data.destinatario.funcao : '',
+    destinatario_setor: (data && data.destinatario) ? data.destinatario.setor : '',
+    destinatario_descCel: (data && data.destinatario) ? data.destinatario.descCel : '',
+    destinatario_codCracha: (data && data.destinatario) ? data.destinatario.codCracha : '',
+    destinatario_predio: (data && data.destinatario) ? data.destinatario.predio : '',
+    destinatario_celula: (data && data.destinatario) ? data.destinatario.celula : '',
+    destinatario_turno: (data && data.destinatario) ? data.destinatario.turno : '',
+    ordem_pai: (data && data.ordem) ? data.ordem.pai : '',
+    ordem_rep: (data && data.ordem) ? data.ordem.rep : '',
+    ordem_req: (data && data.ordem) ? data.ordem.req : '',
+    ordem_prioridade: (data && data.ordem) ? data.ordem.prioridade : '',
+    ordem_marca: (data && data.ordem) ? data.ordem.marca : '',
+    ordem_modelo: (data && data.ordem) ? data.ordem.modelo : '',
+    ordem_combinacao: (data && data.ordem) ? data.ordem.combinacao : '',
+    ordem_documento: (data && data.ordem) ? data.ordem.documento : '',
+    ordem_tipo: (data && data.ordem) ? data.ordem.tipo : '',
+    ordem_dataFecha: (data && data.ordem) ? data.ordem.dataFecha : '',
+    ordem_semana: (data && data.ordem) ? data.ordem.semana : '',
+    ordem_giro: (data && data.ordem) ? data.ordem.giro : '',
+    entrega_barcode: (data && data.entrega) ? data.entrega.barcode : '',
+    entrega_nome: (data && data.entrega) ? data.entrega.nome : '',
+    entrega_descCel: (data && data.entrega) ? data.entrega.descCel : '',
+    entrega_turno: (data && data.entrega) ? data.entrega.turno : '',
+    entrega_funcao: (data && data.entrega) ? data.entrega.funcao : ''
   };
   
   return appendRow('PCP_Data', flatData);
