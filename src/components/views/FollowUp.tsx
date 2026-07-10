@@ -1949,8 +1949,7 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen }: Fol
                       className="w-full bg-white text-slate-900 border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer font-semibold"
                     >
                       <option value="UMBRO">UMBRO</option>
-                      <option value="NIKE">NIKE</option>
-                      <option value="ADIDAS">ADIDAS</option>
+                      <option value="ASICS">ASICS</option>
                       <option value="FILA">FILA</option>
                     </select>
                   </div>
