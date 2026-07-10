@@ -1288,7 +1288,7 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen }: Fol
         <div className="flex flex-wrap gap-2">
           <button
             onClick={generateMateriasPdf}
-            className="bg-white border border-gray-300 text-gray-750 px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50 transition-colors shadow-sm text-sm cursor-pointer font-bold"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm text-sm font-bold cursor-pointer"
           >
             <FileDown size={18} />
             Exportar PDF
@@ -1663,7 +1663,7 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen }: Fol
               
               doc.save(`followup_awb_${new Date().toISOString().split('T')[0]}.pdf`);
             }}
-            className="bg-white border border-gray-300 text-gray-750 px-4 py-2 rounded-lg flex items-center gap-2 hover:bg-gray-50 transition-colors shadow-sm text-sm cursor-pointer font-bold"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors shadow-sm text-sm font-bold cursor-pointer"
           >
             <FileDown size={18} />
             Exportar PDF
