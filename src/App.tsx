@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { LayoutDashboard, FileText, Activity, MessageCircle, Settings, Menu, X, LogOut, Loader2, Download, Box, ClipboardList, CalendarClock, Layers } from 'lucide-react';
+import { LayoutDashboard, FileText, Activity, MessageCircle, Settings, Menu, X, LogOut, Loader2, Download, Box, ClipboardList, CalendarClock, Layers, Shield, ChevronDown, ChevronRight, ShoppingCart, Scissors } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { api } from './lib/api';
 import { dataCache } from './lib/cache';
@@ -24,13 +24,12 @@ const menuItems = [
   { id: 'painel', label: 'Painel (Status)', icon: LayoutDashboard, perm: 'painel' },
   { id: 'cadastro', label: 'Cadastro', icon: FileText, perm: 'cadastro' },
   { id: 'almox', label: 'Almox', icon: Box, perm: 'almx' },
-  { id: 'cadastroEntrega', label: 'Cadastro Entrega', icon: FileText, perm: 'cadastro' },
-  { id: 'entregaDublagem', label: 'Entrega Dublagem', icon: Layers, perm: 'cadastro' },
-  { id: 'disponivelCentral', label: 'Disponível na Central', icon: Box, perm: 'cadastro' },
+  { id: 'cadastroEntrega', label: 'Entrega do Almox', icon: FileText, perm: 'cadastroEntrega' },
+  { id: 'entregaDublagem', label: 'Entrega Dublagem', icon: Layers, perm: 'entregaDublagem' },
+  { id: 'disponivelCentral', label: 'Disponível na Central', icon: Box, perm: 'disponivelCentral' },
   { id: 'producao', label: 'Produção', icon: ClipboardList, perm: 'producao' },
   { id: 'programacaoPCP', label: 'Programação PCP', icon: CalendarClock, perm: 'programacaoPCP' },
   { id: 'followup', label: 'Follow-up', icon: Activity, perm: 'followup' },
-  { id: 'chat', label: 'Chat', icon: MessageCircle, perm: 'chat' },
   { id: 'configuracao', label: 'Configuração', icon: Settings, perm: 'config' },
 ] as const;
 
@@ -89,24 +88,41 @@ export default function App() {
     
     // Prioriza a coluna da planilha que é a fonte da verdade em tempo real
     let perms = user['Permissões de Tela (Módulos)'] || user.permissions;
+    let parsed: any = {};
     
     if (typeof perms === 'string' && perms.trim()) {
       try {
-        const parsed = JSON.parse(perms);
-        // Só retorna se for um objeto válido com chaves
-        return (parsed && typeof parsed === 'object') ? parsed : { painel: true };
+        parsed = JSON.parse(perms);
       } catch (e) {
         console.error('Erro ao parsear permissões do usuário');
-        return { painel: true };
       }
+    } else if (perms && typeof perms === 'object') {
+      parsed = perms;
     }
-    
-    if (perms && typeof perms === 'object') {
-      return perms;
-    }
-    
-    // Se não houver permissão definida (ex: usuário novo recém cadastrado), garante acesso EXCLUSIVO ao Painel
-    return { painel: true };
+
+    // Papel do usuário
+    const role = user.role || user['PAPEL'] || 'User';
+    const isAdmin = role === 'Admin';
+
+    // Se o objeto estiver vazio, assume padrão
+    const hasKeys = parsed && Object.keys(parsed).length > 0;
+
+    // Criar objeto completo de permissões com compatibilidade reversa (backward compatibility fallback)
+    const baseCadastro = parsed.cadastro === true || (!hasKeys && isAdmin);
+
+    return {
+      painel: parsed.painel !== false,
+      cadastro: parsed.cadastro !== undefined ? parsed.cadastro === true : baseCadastro,
+      almx: parsed.almx !== undefined ? parsed.almx === true : baseCadastro,
+      cadastroEntrega: parsed.cadastroEntrega !== undefined ? parsed.cadastroEntrega === true : baseCadastro,
+      entregaDublagem: parsed.entregaDublagem !== undefined ? parsed.entregaDublagem === true : baseCadastro,
+      disponivelCentral: parsed.disponivelCentral !== undefined ? parsed.disponivelCentral === true : baseCadastro,
+      producao: parsed.producao !== false,
+      programacaoPCP: parsed.programacaoPCP !== false,
+      followup: parsed.followup !== false,
+      chat: parsed.chat !== false,
+      config: parsed.config !== undefined ? parsed.config === true : isAdmin
+    };
   }, [user]);
 
   // Redireciona para o Painel caso o usuário tente acessar uma tela sem permissão
@@ -115,8 +131,8 @@ export default function App() {
       const currentMenuItem = menuItems.find(item => item.id === activeView);
       if (currentMenuItem) {
         const hasPermission = currentMenuItem.perm === 'producao' || currentMenuItem.perm === 'programacaoPCP' 
-          ? permissions[currentMenuItem.perm as any] !== false 
-          : permissions[currentMenuItem.perm as any] === true;
+          ? (permissions as any)[currentMenuItem.perm] !== false 
+          : (permissions as any)[currentMenuItem.perm] === true;
         
         if (!hasPermission) {
           console.warn(`[SEGURANÇA] Usuário sem permissão para acessar a tela [${activeView}]. Redirecionando para Painel (Status).`);
@@ -313,12 +329,50 @@ export default function App() {
   const filteredMenuItems = useMemo(() => {
     if (!permissions) return [];
     return menuItems.filter(item => {
+      if (item.id === 'configuracao') return true;
       if (item.perm === 'producao' || item.perm === 'programacaoPCP') {
-        return permissions[item.perm as any] !== false;
+        return (permissions as any)[item.perm] !== false;
       }
-      return permissions[item.perm as any] === true;
+      return (permissions as any)[item.perm] === true;
     });
   }, [permissions]);
+
+  // Grupos e categorias para o Sidebar
+  const groupReposicao = useMemo(() => ['painel', 'cadastro', 'almox', 'cadastroEntrega', 'entregaDublagem', 'disponivelCentral'], []);
+  const groupCorte = useMemo(() => ['producao', 'programacaoPCP'], []);
+  const groupCompras = useMemo(() => ['followup'], []);
+
+  const [expandedGroups, setExpandedGroups] = useState({
+    reposicao: true,
+    corte: true,
+    compras: true
+  });
+
+  const permittedReposicao = useMemo(() => {
+    return filteredMenuItems.filter(item => groupReposicao.includes(item.id));
+  }, [filteredMenuItems, groupReposicao]);
+
+  const permittedCorte = useMemo(() => {
+    return filteredMenuItems.filter(item => groupCorte.includes(item.id));
+  }, [filteredMenuItems, groupCorte]);
+
+  const permittedCompras = useMemo(() => {
+    return filteredMenuItems.filter(item => groupCompras.includes(item.id));
+  }, [filteredMenuItems, groupCompras]);
+
+  const permittedDirect = useMemo(() => {
+    return filteredMenuItems.filter(item => ['configuracao'].includes(item.id));
+  }, [filteredMenuItems]);
+
+  useEffect(() => {
+    if (groupReposicao.includes(activeView)) {
+      setExpandedGroups(prev => ({ ...prev, reposicao: true }));
+    } else if (groupCorte.includes(activeView)) {
+      setExpandedGroups(prev => ({ ...prev, corte: true }));
+    } else if (groupCompras.includes(activeView)) {
+      setExpandedGroups(prev => ({ ...prev, compras: true }));
+    }
+  }, [activeView, groupReposicao, groupCorte, groupCompras]);
 
   // Só considera o sistema "carregado" se o carregamento de autenticação inicial terminou
   const isAppReady = !isInitialLoading;
@@ -392,9 +446,17 @@ export default function App() {
       case 'disponivelCentral': return <DisponivelCentral />;
       case 'producao': return <Producao />;
       case 'programacaoPCP': return <ProgramacaoPCP setHeaderContent={setHeaderContent} />;
-      case 'followup': return <FollowUp />;
+      case 'followup': return <FollowUp isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} />;
       case 'chat': return <Chat />;
-      case 'configuracao': return <Configuracao />;
+      case 'configuracao': return (
+        <Configuracao 
+          currentUser={user} 
+          onUpdateCurrentUser={(updatedUser) => {
+            setUser(updatedUser);
+            localStorage.setItem('pcp_user', JSON.stringify(updatedUser));
+          }} 
+        />
+      );
       default: return <div className="p-8 text-center text-gray-500">Selecione um módulo no menu lateral.</div>;
     }
   };
@@ -432,28 +494,184 @@ export default function App() {
           </button>
         </div>
 
-        <nav className="flex-1 py-4 space-y-1 overflow-y-auto">
-          {filteredMenuItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = activeView === item.id;
-            return (
+        <nav className="flex-1 py-4 space-y-3 overflow-y-auto">
+          {/* Grupo 1: Controle de Reposição */}
+          {permittedReposicao.length > 0 && (
+            <div className="space-y-1">
               <button
-                key={item.id}
-                onClick={() => {
-                  setActiveView(item.id);
-                  if (window.innerWidth < 768) setIsSidebarOpen(false);
-                }}
-                className={`w-full flex items-center gap-3 px-6 py-3 transition-colors ${
-                  isActive 
-                    ? 'bg-slate-800 border-r-4 border-orange-500 font-semibold' 
-                    : 'hover:bg-slate-800/55 text-white/80 hover:text-white'
-                }`}
+                onClick={() => setExpandedGroups(prev => ({ ...prev, reposicao: !prev.reposicao }))}
+                className="w-full flex items-center justify-between px-6 py-2 text-xs font-bold uppercase tracking-wider text-slate-400 hover:text-white hover:bg-slate-800/40 transition-colors duration-150 cursor-pointer"
               >
-                <Icon size={20} />
-                <span>{item.label}</span>
+                <div className="flex items-center gap-2.5">
+                  <Layers size={16} className="text-orange-500 animate-pulse" />
+                  <span>Controle de Reposição</span>
+                </div>
+                {expandedGroups.reposicao ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
               </button>
-            );
-          })}
+              
+              <AnimatePresence initial={false}>
+                {expandedGroups.reposicao && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden space-y-0.5"
+                  >
+                    {permittedReposicao.map((item) => {
+                      const Icon = item.icon;
+                      const isActive = activeView === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => {
+                            setActiveView(item.id);
+                            if (window.innerWidth < 768) setIsSidebarOpen(false);
+                          }}
+                          className={`w-full flex items-center gap-3 pl-10 pr-6 py-2 text-sm transition-colors ${
+                            isActive 
+                              ? 'bg-slate-800 border-r-4 border-orange-500 font-semibold text-white' 
+                              : 'text-white/75 hover:text-white hover:bg-slate-800/55'
+                          }`}
+                        >
+                          <Icon size={16} />
+                          <span>{item.label}</span>
+                        </button>
+                      );
+                    })}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+
+          {/* Grupo 2: Plano de corte */}
+          {permittedCorte.length > 0 && (
+            <div className="space-y-1">
+              <button
+                onClick={() => setExpandedGroups(prev => ({ ...prev, corte: !prev.corte }))}
+                className="w-full flex items-center justify-between px-6 py-2 text-xs font-bold uppercase tracking-wider text-slate-400 hover:text-white hover:bg-slate-800/40 transition-colors duration-150 cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Scissors size={16} className="text-orange-500" />
+                  <span>Plano de corte</span>
+                </div>
+                {expandedGroups.corte ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              </button>
+              
+              <AnimatePresence initial={false}>
+                {expandedGroups.corte && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden space-y-0.5"
+                  >
+                    {permittedCorte.map((item) => {
+                      const Icon = item.icon;
+                      const isActive = activeView === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => {
+                            setActiveView(item.id);
+                            if (window.innerWidth < 768) setIsSidebarOpen(false);
+                          }}
+                          className={`w-full flex items-center gap-3 pl-10 pr-6 py-2 text-sm transition-colors ${
+                            isActive 
+                              ? 'bg-slate-800 border-r-4 border-orange-500 font-semibold text-white' 
+                              : 'text-white/75 hover:text-white hover:bg-slate-800/55'
+                          }`}
+                        >
+                          <Icon size={16} />
+                          <span>{item.label}</span>
+                        </button>
+                      );
+                    })}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+
+          {/* Grupo 3: Compras */}
+          {permittedCompras.length > 0 && (
+            <div className="space-y-1">
+              <button
+                onClick={() => setExpandedGroups(prev => ({ ...prev, compras: !prev.compras }))}
+                className="w-full flex items-center justify-between px-6 py-2 text-xs font-bold uppercase tracking-wider text-slate-400 hover:text-white hover:bg-slate-800/40 transition-colors duration-150 cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5">
+                  <ShoppingCart size={16} className="text-orange-500" />
+                  <span>Compras</span>
+                </div>
+                {expandedGroups.compras ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              </button>
+              
+              <AnimatePresence initial={false}>
+                {expandedGroups.compras && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden space-y-0.5"
+                  >
+                    {permittedCompras.map((item) => {
+                      const Icon = item.icon;
+                      const isActive = activeView === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => {
+                            setActiveView(item.id);
+                            if (window.innerWidth < 768) setIsSidebarOpen(false);
+                          }}
+                          className={`w-full flex items-center gap-3 pl-10 pr-6 py-2 text-sm transition-colors ${
+                            isActive 
+                              ? 'bg-slate-800 border-r-4 border-orange-500 font-semibold text-white' 
+                              : 'text-white/75 hover:text-white hover:bg-slate-800/55'
+                          }`}
+                        >
+                          <Icon size={16} />
+                          <span>{item.label}</span>
+                        </button>
+                      );
+                    })}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+
+          {/* Direct Links (Chat, Configuração) */}
+          {permittedDirect.length > 0 && (
+            <div className="pt-2 border-t border-slate-800/55 space-y-1">
+              {permittedDirect.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeView === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setActiveView(item.id);
+                      if (window.innerWidth < 768) setIsSidebarOpen(false);
+                    }}
+                    className={`w-full flex items-center gap-3 px-6 py-2.5 text-sm transition-colors ${
+                      isActive 
+                        ? 'bg-slate-800 border-r-4 border-orange-500 font-semibold text-white' 
+                        : 'text-white/75 hover:text-white hover:bg-slate-800/55'
+                    }`}
+                  >
+                    <Icon size={18} />
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {filteredMenuItems.length === 0 && permissions !== null && (
             <div className="px-6 py-4 text-xs text-white/50 italic">
               Nenhuma permissão de acesso configurada.

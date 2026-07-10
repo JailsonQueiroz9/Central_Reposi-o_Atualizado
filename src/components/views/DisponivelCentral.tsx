@@ -187,7 +187,7 @@ export default function DisponivelCentral() {
 
   return (
     <div className="p-4 md:p-8 h-full bg-gray-50 overflow-y-auto custom-scrollbar flex flex-col gap-6">
-      <div className="max-w-[1600px] mx-auto w-full space-y-6">
+      <div className="max-w-[1800px] mx-auto w-full space-y-6">
         
         {/* Top Header Section */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -216,14 +216,14 @@ export default function DisponivelCentral() {
         </div>
 
         {/* Search controls */}
-        <div className="bg-white p-4 rounded-xl shadow-xs border border-gray-150 flex flex-col md:flex-row gap-4 items-center">
+        <div className="bg-white p-4 rounded-xl shadow-xs border border-gray-200 flex flex-col md:flex-row gap-4 items-center">
           <div className="relative flex-1 w-full">
             <input
               type="text"
               placeholder="Pesquise Ordem, Ord_Rep, Req, Produto, Destinatário..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-emerald-600 text-sm bg-gray-50/50"
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:border-emerald-600 text-sm bg-gray-50/50 text-gray-800 font-medium"
             />
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
           </div>
@@ -287,7 +287,7 @@ export default function DisponivelCentral() {
                         />
                       </td>
                       <td className="p-4 text-sm font-medium text-gray-800 font-mono">{item['Ord_Rep']}</td>
-                      <td className="p-4 text-sm text-gray-750">
+                      <td className="p-4 text-sm text-gray-600">
                         <div className="font-semibold text-gray-800">
                           {item['destinatario_nome'] || item['Nome'] || '-'}
                         </div>
@@ -301,7 +301,7 @@ export default function DisponivelCentral() {
                       <td className="p-4 text-sm text-gray-500 font-medium">{item['Medida'] || '-'}</td>
                       <td className="p-4 text-sm whitespace-nowrap">
                         {item['Dublado'] === 'Confirmado' ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-green-150 text-green-800 border border-green-250">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800 border border-green-200">
                             Confirmado ✅
                           </span>
                         ) : (
@@ -328,7 +328,7 @@ export default function DisponivelCentral() {
           <div className="lg:col-span-1 flex flex-col gap-6">
             
             {/* Main Info Card */}
-            <div className="bg-white rounded-2xl border border-gray-150 shadow-sm overflow-hidden flex flex-col">
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
               <div className="bg-slate-800 p-4 text-white flex items-center gap-2">
                 <Package size={20} className="text-emerald-400" />
                 <h3 className="font-bold text-sm uppercase tracking-wider">Detalhes do Destinatário</h3>

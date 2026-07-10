@@ -184,7 +184,7 @@ export default function CadastroAlmx() {
 
   return (
     <div className="p-4 md:p-8 h-full bg-gray-50 overflow-auto">
-      <div className="max-w-7xl mx-auto space-y-6">
+      <div className="max-w-[1800px] mx-auto w-full space-y-6">
         
         {/* Header & Mode Selector */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">

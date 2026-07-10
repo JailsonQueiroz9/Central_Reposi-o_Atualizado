@@ -517,7 +517,7 @@ export default function Painel() {
           <div className="flex flex-col lg:flex-row flex-1">
             {/* Table Container (Left Side) */}
             <div className="flex-1 p-4 md:p-6 overflow-hidden flex flex-col">
-              <div className="overflow-auto max-h-[550px] border border-gray-250 rounded-xl custom-scrollbar relative shadow-sm bg-gray-50/10">
+              <div className="overflow-auto max-h-[550px] border border-gray-200 rounded-xl custom-scrollbar relative shadow-sm bg-gray-50/10">
                 <table className="w-full text-left border-collapse whitespace-nowrap">
                   <thead className="sticky top-0延 z-20 shadow-sm">
                     <tr className="bg-[#00FF00] border-b border-gray-300">
@@ -560,7 +560,7 @@ export default function Painel() {
                             const isM2 = medida === 'M²' || medida === 'M';
                             
                             let label = mat['Status'];
-                            let styleClass = 'bg-gray-100 text-gray-700 border border-gray-250';
+                            let styleClass = 'bg-gray-100 text-gray-700 border border-gray-200';
                             
                             if (rawStatus === 'MPOK') {
                               if (isM2) {

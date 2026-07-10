@@ -5,7 +5,7 @@ export const api = {
    * @param data Dados a serem enviados para a ação (opcional)
    */
   post: async (action: string, data: any = {}) => {
-    const url = import.meta.env.VITE_API_URL || import.meta.env.VITE_APPS_SCRIPT_URL || "https://script.google.com/macros/s/AKfycbwLQeduS0-5TcVcDVvlzCv0b-PwGb2LdFiAG5sjfqrymVZYwX8ysgE5KO-W92r01VM3jw/exec";
+    const url = import.meta.env.VITE_API_URL || import.meta.env.VITE_APPS_SCRIPT_URL || "https://script.google.com/macros/s/AKfycbzmBWyZxnkAA0uFUp6neGpUuvVk8R1KWS274zW69lETO0ASilV-O--A3y-QXJqyWrx7mQ/exec";
     
     const isInvalidUrl = !url || url.includes('TODO') || url.includes('YOUR_') || url.trim() === '';
 
@@ -278,6 +278,144 @@ function mockResponse(action: string, data: any) {
             'Descrição': 'Descrição mockada para ' + data.produto
           });
           break;
+        case 'getMateriasData':
+          resolve([
+            { 
+              id: 'm1',
+              'Produto': '1012560', 
+              'Descrição': 'TECIDO K897/4 DUPLA FRONTURA AZUL', 
+              'Quantidade': '750', 
+              'Unidade': 'M²', 
+              'Status': 'MPOK', 
+              'Fornecedor': 'Textil Dass', 
+              'Almox': 'CENTRAL-A'
+            },
+            { 
+              id: 'm2',
+              'Produto': '637355', 
+              'Descrição': 'ETIQUETA DE FABRICACAO LINGUETA ASICS', 
+              'Quantidade': '100', 
+              'Unidade': 'UN', 
+              'Status': 'MPNG', 
+              'Fornecedor': 'Etibras SA', 
+              'Almox': 'CENTRAL-B'
+            },
+            { 
+              id: 'm3',
+              'Produto': '627790', 
+              'Descrição': 'FILME TPU ECOFUSION PRESS STAMPING', 
+              'Quantidade': '154', 
+              'Unidade': 'M', 
+              'Status': 'MP TRÂNSITO', 
+              'Fornecedor': 'TPU Importadora', 
+              'Almox': 'DOCK-2'
+            },
+            { 
+              id: 'm4',
+              'Produto': '1355754', 
+              'Descrição': 'TECIDO KETTEN 1501 BRANCO 09 COMPRE', 
+              'Quantidade': '230', 
+              'Unidade': 'M²', 
+              'Status': 'MPOK', 
+              'Fornecedor': 'Inylbra Ltda', 
+              'Almox': 'CENTRAL-A'
+            },
+            { 
+              id: 'm5',
+              'Produto': '1391346', 
+              'Descrição': 'TECIDO JACQUARD LOCALIZADO AZUL/CYAN', 
+              'Quantidade': '0', 
+              'Unidade': 'M²', 
+              'Status': 'CRÍTICO', 
+              'Fornecedor': 'Fitas Dass', 
+              'Almox': 'SETOR-PCP'
+            }
+          ]);
+          break;
+        case 'saveMateriaData':
+          console.log('Mock saving Materia data:', data);
+          resolve({ success: true, id: data.id || 'mock-mat-id-' + Date.now() });
+          break;
+        case 'deleteMateriaData':
+          console.log('Mock deleting Materia data:', data);
+          resolve({ success: true, id: data.id });
+          break;
+        case 'getAwbData': {
+          const stored = localStorage.getItem('pcp_awb_data');
+          if (stored) {
+            resolve(JSON.parse(stored));
+          } else {
+            const initial = [
+              {
+                id: 'awb1',
+                Marca: 'UMBRO',
+                Fornecedor: 'NOVANOR',
+                Saida: '21/01/2026',
+                NFs: '1078095.1078096',
+                Awb: '57703379159',
+                Status: 'DISPONIVEL',
+                Rastreio: 'https://www.dhl.com/br-pt/home.html',
+                Material: 'ROLOS',
+                Observacao: 'CHEGA',
+                Docs: 2,
+                DocList: ['Invoice_1078095.pdf', 'Packing_List_1078096.pdf']
+              },
+              {
+                id: 'awb2',
+                Marca: 'NIKE',
+                Fornecedor: 'SINTEX',
+                Saida: '18/02/2026',
+                NFs: '1089201',
+                Awb: '99201384752',
+                Status: 'EM TRÂNSITO',
+                Rastreio: 'https://www.dhl.com/br-pt/home.html',
+                Material: 'SOLADOS',
+                Observacao: 'Aguardando liberação alfandegária',
+                Docs: 1,
+                DocList: ['Invoice_1089201.pdf']
+              },
+              {
+                id: 'awb3',
+                Marca: 'ADIDAS',
+                Fornecedor: 'TEXTIL DASS',
+                Saida: '02/03/2026',
+                NFs: '1099854',
+                Awb: '38274910293',
+                Status: 'AGUARDANDO',
+                Rastreio: 'https://www.dhl.com/br-pt/home.html',
+                Material: 'MALHAS',
+                Observacao: 'Previsão de coleta amanhã',
+                Docs: 3,
+                DocList: ['Invoice_1099854.pdf', 'Packing_List_1099854.pdf', 'Coleta_Auth.pdf']
+              }
+            ];
+            localStorage.setItem('pcp_awb_data', JSON.stringify(initial));
+            resolve(initial);
+          }
+          break;
+        }
+        case 'saveAwbData': {
+          const stored = localStorage.getItem('pcp_awb_data');
+          let list = stored ? JSON.parse(stored) : [];
+          const actualData = { ...data };
+          if (actualData.id) {
+            list = list.map((item: any) => item.id === actualData.id ? { ...item, ...actualData } : item);
+          } else {
+            actualData.id = 'awb_' + Date.now();
+            list = [actualData, ...list];
+          }
+          localStorage.setItem('pcp_awb_data', JSON.stringify(list));
+          resolve({ success: true, data: actualData });
+          break;
+        }
+        case 'deleteAwbData': {
+          const stored = localStorage.getItem('pcp_awb_data');
+          let list = stored ? JSON.parse(stored) : [];
+          list = list.filter((item: any) => item.id !== data.id);
+          localStorage.setItem('pcp_awb_data', JSON.stringify(list));
+          resolve({ success: true });
+          break;
+        }
         case 'saveMultiplePainelData':
         case 'updateMultiplePainelData':
         case 'deleteMultiplePainelData':

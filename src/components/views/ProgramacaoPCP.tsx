@@ -50,6 +50,7 @@ const PCP_COLUMNS = [
   "NOME PRODUTO",
   "LOTE",
   "COR (COR DO TALÃO)",
+  "ORDEM",
   "QTD. PROGRAMADA",
   "STATUS DA OPERAÇÃO",
   "FOLLOW M2",
@@ -220,11 +221,97 @@ const setFieldsWithNormalization = (obj: any, fields: { [key: string]: string })
   }
 };
 
+// Helper to map and calculate STATUS DA OPERAÇÃO dynamically from Corte, Serigrafia and Apoio/Supermercado columns
+const calculateDynamicStatusOperacao = (item: any): string => {
+  if (!item) return 'FALTA CORTAR';
+
+  // 1. Corte columns
+  const corte = getVal(item, "CORTE").toUpperCase().trim();
+  const dataCorte = getVal(item, "DATA CORTE / CORTE AUTOMATICO ").toUpperCase().trim();
+  const inicioCorte = getVal(item, "INICIO CORTE / CORTE AUTO").toUpperCase().trim();
+  const lectra = getVal(item, "LECTRA").toUpperCase().trim();
+  const automatico = getVal(item, "AUTOMATICO").toUpperCase().trim();
+  const followM2 = getVal(item, "FOLLOW M2").toUpperCase().trim();
+
+  const isCorteDone =
+    (corte !== '' && corte !== 'NOK' && !corte.includes('FALTA') && !corte.includes('PENDENTE')) ||
+    (dataCorte !== '' && dataCorte !== 'NOK' && !dataCorte.includes('FALTA')) ||
+    (inicioCorte !== '' && inicioCorte !== 'NOK' && !inicioCorte.includes('FALTA')) ||
+    (lectra !== '' && lectra !== 'NOK' && !lectra.includes('FALTA')) ||
+    (automatico !== '' && automatico !== 'NOK' && !automatico.includes('FALTA')) ||
+    (followM2 === 'OK' || followM2 === 'CONCLUÍDO' || followM2 === 'CONCLUIDO');
+
+  if (!isCorteDone) {
+    return 'FALTA CORTAR';
+  }
+
+  // 2. Serigrafia columns
+  const serigCarrossel = getVal(item, "SERIG CARROSSEL").toUpperCase().trim();
+  const separSerig = getVal(item, "SEPAR. SERIGRAFIA").toUpperCase().trim();
+  const dataSerig = getVal(item, "DATA SERIGRAFIA").toUpperCase().trim();
+  const statusSerig = getVal(item, "STATUS SERIGRAFIA").toUpperCase().trim();
+  const linhaSerig = (item["LINHA SERIG"] || item["Linha Serig"] || "").toString().trim();
+
+  const hasSerig = linhaSerig !== '' || serigCarrossel !== '' || separSerig !== '' || dataSerig !== '' || statusSerig !== '';
+
+  const isSerigDone =
+    statusSerig === 'OK' ||
+    statusSerig === 'CONCLUÍDO' ||
+    statusSerig === 'CONCLUIDO' ||
+    serigCarrossel === 'OK' ||
+    serigCarrossel === 'CONCLUÍDO' ||
+    serigCarrossel === 'CONCLUIDO' ||
+    separSerig === 'OK' ||
+    separSerig === 'CONCLUÍDO' ||
+    separSerig === 'CONCLUIDO' ||
+    (dataSerig !== '' && !dataSerig.includes('FALTA') && !dataSerig.includes('ATRASO') && dataSerig !== 'NOK');
+
+  if (hasSerig && !isSerigDone) {
+    return 'EM SERIGRAFIA';
+  }
+
+  // 3. Apoio / Supermercado columns
+  const recSuper = getVal(item, "REC SUPER").toUpperCase().trim();
+  const kanbanApoio = (getVal(item, "KANBAN APOIO") || getVal(item, "KANBAN APOLO")).toUpperCase().trim();
+  const dataSuper = getVal(item, "DATA SUPERMERCADO").toUpperCase().trim();
+  const followUnd = getVal(item, "FOLLOW UND").toUpperCase().trim();
+
+  const isApoioDone =
+    recSuper === 'OK' ||
+    recSuper === 'CONCLUÍDO' ||
+    recSuper === 'CONCLUIDO' ||
+    kanbanApoio === 'OK' ||
+    kanbanApoio === 'CONCLUÍDO' ||
+    kanbanApoio === 'CONCLUIDO' ||
+    dataSuper !== '' ||
+    followUnd === 'OK' ||
+    followUnd === 'CONCLUÍDO' ||
+    followUnd === 'CONCLUIDO';
+
+  if (!isApoioDone) {
+    return 'APOIO / SUPERMERCADO';
+  }
+
+  // 4. Ready for stitching
+  return 'PRONTO PARA COSTURA';
+};
+
 // Helper to look up values inside the item object with case-insensitive and accent-insensitive key fallback
 const getVal = (item: any, columnTitle: string): string => {
   if (!item) return '';
   let rawVal = '';
-  if (item[columnTitle] !== undefined && item[columnTitle] !== null) {
+
+  const isStatusOperacaoCol = columnTitle.toUpperCase().trim() === "STATUS DA OPERAÇÃO";
+
+  if (isStatusOperacaoCol) {
+    const itemExplicitStatus = item["STATUS DA OPERAÇÃO"] !== undefined && item["STATUS DA OPERAÇÃO"] !== null ? String(item["STATUS DA OPERAÇÃO"]).trim() : '';
+    const isValidStatus = ['FALTA CORTAR', 'EM SERIGRAFIA', 'APOIO / SUPERMERCADO', 'PRONTO PARA COSTURA'].includes(itemExplicitStatus.toUpperCase());
+    if (itemExplicitStatus !== '' && isValidStatus) {
+      rawVal = itemExplicitStatus;
+    } else {
+      rawVal = calculateDynamicStatusOperacao(item);
+    }
+  } else if (item[columnTitle] !== undefined && item[columnTitle] !== null) {
     rawVal = String(item[columnTitle]);
   } else {
     const normTitle = columnTitle.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
@@ -289,6 +376,22 @@ const getCellStyle = (col: string, val: string): string => {
   const c = col.toUpperCase();
   const v = val.toUpperCase().trim();
   
+  // Custom styled statuses for STATUS DA OPERAÇÃO
+  if (c === "STATUS DA OPERAÇÃO" || c === "STATUS_OPERACAO") {
+    if (v === 'PRONTO PARA COSTURA' || v === 'CONCLUÍDO' || v === 'CONCLUIDO') {
+      return "bg-emerald-600 text-white font-black text-center text-[11px] uppercase tracking-wider border-emerald-700 shadow-sm group-hover:bg-emerald-500 transition-colors animate-pulse";
+    }
+    if (v === 'EM SERIGRAFIA') {
+      return "bg-indigo-100 text-indigo-800 font-extrabold text-center text-[11px] border-indigo-200 group-hover:bg-indigo-250 transition-colors";
+    }
+    if (v === 'APOIO / SUPERMERCADO' || v === 'APOIO / SUPERMERCADO' || v.includes('APOIO')) {
+      return "bg-sky-100 text-sky-800 font-extrabold text-center text-[11px] border-sky-200 group-hover:bg-sky-200 transition-colors";
+    }
+    if (v === 'FALTA CORTAR' || v.includes('FALTA')) {
+      return "bg-rose-100 text-red-700 font-black border-red-200 text-center text-[11px] group-hover:bg-rose-250 transition-colors";
+    }
+  }
+
   // Highlight LINHA headers or values on left in pure bright yellow
   if (c.includes("LINHA /") || c.includes("LINHA APOIO") || c.includes("LINHAS ANTIGAS") || c.includes("LINHA SERIG")) {
     return "bg-yellow-300 text-black font-bold text-center border-slate-300 font-mono text-[12px] group-hover:bg-yellow-200 transition-colors";
@@ -870,6 +973,7 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
           sheetName: 'Wip042',
           data: updatedItem
         });
+        dataCache.invalidate('wipData');
       } catch (saveErr) {
         console.warn('Endpoint error or mock environment:', saveErr);
       }
@@ -956,6 +1060,7 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
         sheetName: 'Wip042',
         data: finalRow
       });
+      dataCache.invalidate('wipData');
     } catch(e) {
       console.log('Background save updated inline with local storage backup sync.', e);
     }
@@ -1275,10 +1380,11 @@ export default function ProgramacaoPCP({ setHeaderContent }: { setHeaderContent?
     
     return {
       ...template,
-      id: baseItem.Ordem || `wip-${idx}`,
-      "MARCA": baseItem.Marca || template.MARCA,
-      "CÓD. PRODUTO": baseItem.Ordem || template['CÓD. PRODUTO'],
-      "SEMANA PRODUÇÃO": baseItem.Semana || template['SEMANA PRODUÇÃO']
+      ...baseItem,
+      id: baseItem.id || baseItem.Ordem || `wip-${idx}`,
+      "MARCA": baseItem.Marca || baseItem.MARCA || template.MARCA,
+      "CÓD. PRODUTO": baseItem.Ordem || baseItem['CÓD. PRODUTO'] || template['CÓD. PRODUTO'],
+      "SEMANA PRODUÇÃO": baseItem.Semana || baseItem['SEMANA PRODUÇÃO'] || template['SEMANA PRODUÇÃO']
     };
   }
 

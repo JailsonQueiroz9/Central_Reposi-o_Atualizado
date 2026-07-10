@@ -157,7 +157,7 @@ export default function CadastroEntrega() {
         {/* Header */}
         <div className="bg-slate-800 p-6 text-white flex items-center gap-3">
           <PackageCheck size={32} className="text-orange-400" />
-          <h1 className="text-2xl font-bold tracking-wide">Cadastro Entrega</h1>
+          <h1 className="text-2xl font-bold tracking-wide">Entrega do Almox</h1>
         </div>
 
         <div className="p-4 sm:p-8 space-y-6 sm:space-y-8">

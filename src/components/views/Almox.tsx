@@ -105,7 +105,7 @@ export default function Almox() {
 
   return (
     <div className="p-4 md:p-8 h-full bg-gray-50 overflow-auto">
-      <div className="max-w-7xl mx-auto space-y-6">
+      <div className="max-w-[1800px] mx-auto w-full space-y-6">
         
         {/* Dashboard Header */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -254,10 +254,10 @@ function StatusBadge({ status, item }: { status: string; item?: any }) {
   if (raw === 'MPOK') {
     const medida = String(item?.['Medida'] || '').toUpperCase().trim();
     if (medida === 'M²' || medida === 'M') {
-      colors = 'bg-purple-100 text-purple-700 border border-purple-250 bg-gradient-to-r from-purple-50 to-orange-50';
+      colors = 'bg-purple-100 text-purple-700 border border-purple-200 bg-gradient-to-r from-purple-50 to-orange-50';
       label = 'SEPARAÇÃO M²';
     } else {
-      colors = 'bg-blue-100 text-blue-700 border border-blue-250 bg-gradient-to-r from-blue-50 to-orange-50';
+      colors = 'bg-blue-100 text-blue-700 border border-blue-200 bg-gradient-to-r from-blue-50 to-orange-50';
       label = 'SEPARAÇÃO AVIAMENTOS';
     }
   } else if (sNorm === 'SEPARACAO M²' || raw === 'SEPARAÇÃO M²') {

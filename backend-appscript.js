@@ -12,6 +12,15 @@ function doPost(e) {
       case 'register':
         result = register(data);
         break;
+      case 'getUsers':
+        result = getUsers();
+        break;
+      case 'addUser':
+        result = addUser(data);
+        break;
+      case 'updateUser':
+        result = updateUser(data);
+        break;
       case 'getUserByCracha':
         result = getUserByCracha(data);
         break;
@@ -45,6 +54,32 @@ function doPost(e) {
         break;
       case 'getMaterialByProduto':
         result = getMaterialByProduto(data);
+        break;
+      case 'getMateriasData':
+        result = getSheetData('Matérias');
+        break;
+      case 'saveMateriaData':
+        if (data.id) {
+          result = updateRow('Matérias', data.id, data);
+        } else {
+          data.id = Utilities.getUuid();
+          result = appendRow('Matérias', data);
+        }
+        break;
+      case 'deleteMateriaData':
+        result = deleteRow('Matérias', data.id);
+        break;
+      case 'getAwbData':
+        result = getAwbData();
+        break;
+      case 'saveAwbData':
+        result = saveAwbData(data);
+        break;
+      case 'deleteAwbData':
+        result = deleteAwbData(data);
+        break;
+      case 'getParametros':
+        result = getParametros();
         break;
       case 'savePCPData':
         result = savePCPData(data);
@@ -138,6 +173,117 @@ function getUserByCracha(data) {
     }
   }
   throw new Error("Usuário não encontrado com este crachá/chapa");
+}
+
+function getUsers() {
+  return getSheetData('Cadastro de usuário');
+}
+
+function addUser(data) {
+  var users = getSheetData('Cadastro de usuário');
+  for (var i = 0; i < users.length; i++) {
+    if (users[i]['E-MAIL'] === data.email) {
+      throw new Error("E-mail já cadastrado");
+    }
+  }
+  
+  var newUser = {
+    'ID': Utilities.getUuid(),
+    'USUÁRIO': data.name,
+    'E-MAIL': data.email,
+    'SENHA': data.password || '123456',
+    'PAPEL': data.role || 'User',
+    'STATUS': 'ativo',
+    'Permissões de Tela (Módulos)': data['Permissões de Tela (Módulos)'] || '{"painel":true,"cadastro":false,"followup":false,"chat":false,"config":false,"producao":false,"programacaoPCP":false}',
+    'Bio': '',
+    'Location': '',
+    'Img': '',
+    'Cargo': ''
+  };
+  
+  appendRow('Cadastro de usuário', newUser);
+  
+  return {
+    id: newUser['ID'],
+    ID: newUser['ID'],
+    nome: newUser['USUÁRIO'],
+    'USUÁRIO': newUser['USUÁRIO'],
+    email: newUser['E-MAIL'],
+    'E-MAIL': newUser['E-MAIL'],
+    funcao: newUser['PAPEL'],
+    'PAPEL': newUser['PAPEL'],
+    'Permissões de Tela (Módulos)': newUser['Permissões de Tela (Módulos)'],
+    'STATUS': 'ativo'
+  };
+}
+
+function updateUser(data) {
+  var id = data.id || data.ID;
+  if (!id) throw new Error("ID do usuário não fornecido");
+  
+  var updateData = {};
+  for (var key in data) {
+    updateData[key] = data[key];
+  }
+  
+  if (data.name && !updateData['USUÁRIO']) {
+    updateData['USUÁRIO'] = data.name;
+  }
+  if (data.email && !updateData['E-MAIL']) {
+    updateData['E-MAIL'] = data.email;
+  }
+  if (data.role && !updateData['PAPEL']) {
+    updateData['PAPEL'] = data.role;
+  }
+  
+  return updateRow('Cadastro de usuário', id, updateData);
+}
+
+function getAwbData() {
+  var list = getSheetData('Follow-Up AWB');
+  for (var i = 0; i < list.length; i++) {
+    var docListVal = list[i]['DocList'] || list[i]['docList'] || '';
+    if (typeof docListVal === 'string' && docListVal.trim()) {
+      try {
+        list[i]['DocList'] = JSON.parse(docListVal);
+      } catch (e) {
+        list[i]['DocList'] = docListVal.split(',').map(function(s) { return s.trim(); });
+      }
+    } else if (!list[i]['DocList']) {
+      list[i]['DocList'] = [];
+    }
+  }
+  return list;
+}
+
+function saveAwbData(data) {
+  var id = data.id;
+  
+  var formattedData = {};
+  for (var key in data) {
+    formattedData[key] = data[key];
+  }
+  if (Array.isArray(formattedData['DocList'])) {
+    formattedData['DocList'] = JSON.stringify(formattedData['DocList']);
+  }
+  
+  if (id) {
+    return updateRow('Follow-Up AWB', id, formattedData);
+  } else {
+    formattedData.id = Utilities.getUuid();
+    return appendRow('Follow-Up AWB', formattedData);
+  }
+}
+
+function deleteAwbData(data) {
+  return deleteRow('Follow-Up AWB', data.id);
+}
+
+function getParametros() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('Parâmetros') || ss.getSheetByName('Parametros');
+  if (!sheet) return [];
+  return getSheetData(sheet.getName());
 }
 
 // ==========================================
@@ -309,17 +455,52 @@ function updateRow(sheetName, id, dataObj) {
   var headers = data[0];
   var idColumnIndex = headers.indexOf('id') !== -1 ? headers.indexOf('id') : headers.indexOf('ID');
   
-  if (idColumnIndex === -1) throw new Error("Coluna de ID não encontrada");
-  
   var rowIndex = -1;
-  for (var i = 1; i < data.length; i++) {
-    if (String(data[i][idColumnIndex]) === String(id)) {
-      rowIndex = i + 1;
-      break;
+  if (idColumnIndex !== -1) {
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][idColumnIndex]) === String(id)) {
+        rowIndex = i + 1;
+        break;
+      }
+    }
+  } else {
+    // Tenta usar _rowIndex diretamente se disponível
+    if (dataObj && dataObj._rowIndex) {
+      var rIndex = Number(dataObj._rowIndex);
+      if (rIndex > 1 && rIndex <= data.length) {
+        rowIndex = rIndex;
+      }
+    }
+    
+    // Se não encontrou por _rowIndex, tenta buscar por Lote, LOTE ou Ordem
+    if (rowIndex === -1) {
+      var possibleKeys = ['Lote', 'LOTE', 'Ordem', 'ORDEM', 'Cod Produto', 'COD. PRODUTO', 'CÓD. PRODUTO'];
+      for (var k = 0; k < possibleKeys.length; k++) {
+        var colIdx = headers.indexOf(possibleKeys[k]);
+        if (colIdx !== -1) {
+          for (var i = 1; i < data.length; i++) {
+            if (String(data[i][colIdx]) === String(id)) {
+              rowIndex = i + 1;
+              break;
+            }
+          }
+          if (rowIndex !== -1) break;
+        }
+      }
     }
   }
   
-  if (rowIndex === -1) throw new Error("Registro não encontrado");
+  if (rowIndex === -1) {
+    // Se ainda assim não encontrou e o id começa com wip-
+    if (String(id).indexOf('wip-') === 0) {
+      var idxFromId = parseInt(String(id).substring(4));
+      if (!isNaN(idxFromId) && (idxFromId + 2) <= data.length) {
+        rowIndex = idxFromId + 2; // w + 2
+      }
+    }
+  }
+  
+  if (rowIndex === -1) throw new Error("Registro não encontrado para id: " + id);
   
   for (var key in dataObj) {
     if (key === 'id' || key === 'ID' || key === '_rowIndex') continue;
@@ -346,16 +527,44 @@ function deleteRow(sheetName, id) {
   var headers = data[0];
   var idColumnIndex = headers.indexOf('id') !== -1 ? headers.indexOf('id') : headers.indexOf('ID');
   
-  if (idColumnIndex === -1) throw new Error("Coluna de ID não encontrada");
-  
-  for (var i = 1; i < data.length; i++) {
-    if (String(data[i][idColumnIndex]) === String(id)) {
-      sheet.deleteRow(i + 1);
-      return { success: true };
+  var rowIndex = -1;
+  if (idColumnIndex !== -1) {
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][idColumnIndex]) === String(id)) {
+        rowIndex = i + 1;
+        break;
+      }
+    }
+  } else {
+    // Tenta buscar por Lote, LOTE ou Ordem
+    var possibleKeys = ['Lote', 'LOTE', 'Ordem', 'ORDEM', 'Cod Produto', 'COD. PRODUTO', 'CÓD. PRODUTO'];
+    for (var k = 0; k < possibleKeys.length; k++) {
+      var colIdx = headers.indexOf(possibleKeys[k]);
+      if (colIdx !== -1) {
+        for (var i = 1; i < data.length; i++) {
+          if (String(data[i][colIdx]) === String(id)) {
+            rowIndex = i + 1;
+            break;
+          }
+        }
+        if (rowIndex !== -1) break;
+      }
     }
   }
   
-  throw new Error("Registro não encontrado");
+  if (rowIndex === -1) {
+    if (String(id).indexOf('wip-') === 0) {
+      var idxFromId = parseInt(String(id).substring(4));
+      if (!isNaN(idxFromId) && (idxFromId + 2) <= data.length) {
+        rowIndex = idxFromId + 2;
+      }
+    }
+  }
+  
+  if (rowIndex === -1) throw new Error("Registro não encontrado para exclusão");
+  
+  sheet.deleteRow(rowIndex);
+  return { success: true };
 }
 
 // ==========================================
