@@ -30,6 +30,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { api } from '@/lib/api';
 import { dataCache } from '@/lib/cache';
 import { jsPDF } from 'jspdf';
+import MateriaPrimaPivotTable from './MateriaPrimaPivotTable';
 
 interface FollowUpOrder {
   id: string;
@@ -877,7 +878,7 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(20);
-    doc.text("DASS - SOLICITAÇÃO DE COMPRA", 15, 22);
+    doc.text("DASS ITB - SOLICITAÇÃO DE COMPRA", 15, 22);
     
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
@@ -978,7 +979,7 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
     doc.setTextColor(148, 163, 184); // slate-400
-    doc.text("GRUPO DASS - DEPARTAMENTO DE COMPRAS", 15, 287);
+    doc.text("GRUPO DASS ITB - FOLLOW-UP", 15, 287);
     doc.text("Página 1 de 1", 175, 287);
 
     return doc.output('blob');
@@ -1408,9 +1409,9 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
       </AnimatePresence>
     </div>
   ) : activeTab === 'materias' ? (
-    <div className="p-6 h-full bg-gray-50 flex flex-col relative w-full flex-1" id="materia-prima-viewport">
+    <div className="p-6 h-full bg-gray-50 flex flex-col relative w-full flex-1 min-h-0" id="materia-prima-viewport">
       {/* Header / Top de Matéria-Prima */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 shrink-0">
         <div>
           <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
             {!isInnerSidebarOpen && (
@@ -1445,161 +1446,12 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
         </div>
       </div>
 
-      {/* Bento Grid de Indicadores de Matéria-Prima */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center gap-4">
-          <div className="p-3 bg-slate-100 rounded-lg text-slate-700">
-            <Layers size={20} />
-          </div>
-          <div>
-            <p className="text-xs text-gray-400 font-bold uppercase tracking-wider">Total de Itens</p>
-            <h3 className="text-2xl font-bold text-slate-800 font-sans">{materiaStats.total}</h3>
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center gap-4">
-          <div className="p-3 bg-emerald-100/40 rounded-lg text-emerald-600">
-            <Check size={20} />
-          </div>
-          <div>
-            <p className="text-xs text-gray-400 font-bold uppercase tracking-wider">Estoque OK (MPOK)</p>
-            <h3 className="text-2xl font-bold text-emerald-700 font-sans">{materiaStats.ok}</h3>
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center gap-4">
-          <div className="p-3 bg-blue-100/40 rounded-lg text-blue-600">
-            <ChevronRight size={20} className="rotate-90 md:rotate-0" />
-          </div>
-          <div>
-            <p className="text-xs text-gray-400 font-bold uppercase tracking-wider">Em Trânsito</p>
-            <h3 className="text-2xl font-bold text-blue-700 font-sans">{materiaStats.transito}</h3>
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center gap-4">
-          <div className="p-3 bg-red-100/50 rounded-lg text-red-600">
-            <X size={20} />
-          </div>
-          <div>
-            <p className="text-xs text-gray-400 font-bold uppercase tracking-wider">Crítico / MPNG</p>
-            <h3 className="text-2xl font-bold text-red-700 font-sans">{materiaStats.critico}</h3>
-          </div>
-        </div>
-      </div>
-
-      {/* Toolbar com Filtro de Busca e Status */}
-      <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm mb-6 flex flex-col md:flex-row justify-between gap-4">
-        <div className="flex-1 bg-gray-50 border border-gray-300 rounded-lg flex items-center px-3 py-2">
-          <Search size={18} className="text-gray-400" />
-          <input
-            type="text"
-            placeholder="Pesquisar por Código, Descrição ou Fornecedor..."
-            value={searchMateria}
-            onChange={(e) => setSearchMateria(e.target.value)}
-            className="bg-transparent border-none outline-none ml-2 text-sm w-full font-medium text-gray-800 placeholder-gray-400"
-          />
-        </div>
-        <div className="flex gap-2 items-center flex-wrap">
-          <span className="text-xs text-gray-500 font-bold whitespace-nowrap uppercase tracking-wider">Filtrar Status:</span>
-          <div className="flex border border-gray-200 rounded-lg overflow-hidden text-xs">
-            {['ALL', 'MPOK', 'MP TRÂNSITO', 'MPNG', 'CRÍTICO'].map((st) => (
-              <button
-                key={st}
-                onClick={() => setMateriaStatusFilter(st)}
-                className={`px-3 py-2 transition-colors cursor-pointer font-bold ${
-                  materiaStatusFilter === st
-                    ? 'bg-orange-600 text-white'
-                    : 'bg-white text-slate-700 hover:bg-gray-50'
-                }`}
-              >
-                {st === 'ALL' ? 'Todos' : st}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Tabela de Matérias Primas */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 flex-1 overflow-hidden flex flex-col">
-        <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full text-left border-collapse min-w-[900px]">
-            <thead>
-              <tr className="bg-gray-100 border-b border-gray-200 text-gray-600 text-sm">
-                <th className="p-4 font-semibold whitespace-nowrap">Código (Produto)</th>
-                <th className="p-4 font-semibold whitespace-nowrap">Descrição do Material</th>
-                <th className="p-4 font-semibold whitespace-nowrap">Estoque Atual</th>
-                <th className="p-4 font-semibold whitespace-nowrap">Status</th>
-                <th className="p-4 font-semibold whitespace-nowrap">Fornecedor</th>
-                <th className="p-4 font-semibold whitespace-nowrap">Almoxarifado</th>
-                <th className="p-4 font-semibold whitespace-nowrap text-center">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loadingMaterias ? (
-                <tr>
-                  <td colSpan={7} className="p-12 text-center text-gray-400">
-                    <Loader2 className="animate-spin inline-block mr-2 text-orange-500 w-6 h-6" />
-                    Sincronizando materiais com a Planilha...
-                  </td>
-                </tr>
-              ) : filteredMaterias.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="p-12 text-center text-gray-400 font-semibold text-sm">
-                    <Inbox className="mx-auto mb-2 text-gray-300" size={32} />
-                    Nenhuma matéria-prima correspondente encontrada.
-                  </td>
-                </tr>
-              ) : (
-                filteredMaterias.map((item) => {
-                  const statusColor = 
-                    item.Status === 'MPOK' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
-                    item.Status === 'MP TRÂNSITO' ? 'bg-blue-50 text-blue-700 border-blue-100' :
-                    item.Status === 'MPNG' ? 'bg-amber-50 text-amber-700 border-amber-100' :
-                    'bg-red-50 text-red-700 border-red-100';
-
-                  return (
-                    <tr key={item.id} className="border-b border-gray-100 hover:bg-gray-50/50 transition-colors text-sm font-sans">
-                      <td className="p-4 font-bold text-slate-800">#{item.Produto}</td>
-                      <td className="p-4 text-gray-800 font-medium max-w-sm truncate" title={item.Descrição}>
-                        {item.Descrição || '-'}
-                      </td>
-                      <td className="p-4 font-mono text-gray-800 font-semibold text-sm">
-                        {item.Quantidade} <span className="text-xs text-gray-400 font-sans font-normal">{item.Unidade}</span>
-                      </td>
-                      <td className="p-4">
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${statusColor}`}>
-                          {item.Status}
-                        </span>
-                      </td>
-                      <td className="p-4 text-gray-500 font-semibold">{item.Fornecedor || '-'}</td>
-                      <td className="p-4 text-gray-500 font-mono font-medium">{item.Almox || '-'}</td>
-                      <td className="p-4 text-center">
-                        <div className="flex justify-center gap-1.5">
-                          <button
-                            onClick={() => openEditMateriaModal(item)}
-                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors cursor-pointer"
-                            title="Editar material"
-                          >
-                            <Edit2 size={16} />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteMateria(item.id)}
-                            className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer"
-                            title="Remover"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      {/* Tabela Dinâmica Pivotada */}
+      <MateriaPrimaPivotTable 
+        data={materias} 
+        onRefresh={fetchMaterias} 
+        isLoading={loadingMaterias} 
+      />
 
       {/* Modal de Cadastro/Edição de Matéria-Prima */}
       <AnimatePresence>
@@ -1957,7 +1809,7 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
                   const statusColor = 
                     item.Status === 'DISPONIVEL' || item.Status === 'DISPONÍVEL' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
                     item.Status === 'EM TRÂNSITO' ? 'bg-blue-50 text-blue-700 border-blue-100' :
-                    item.Status === 'AGUARDANDO' ? 'bg-amber-50 text-amber-750 border-amber-100' :
+                    item.Status === 'AGUARDANDO' ? 'bg-sky-50 text-sky-800 border-sky-200' :
                     'bg-red-50 text-red-700 border-red-100';
 
                   const brandBg = 
@@ -2631,46 +2483,19 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
                         {(() => {
                           // Extrair dados da chave e número da NF a partir do nome do arquivo
                           const digits = previewedDocName.replace(/\D/g, '');
-                          let key = '35260743631191000100550020011085991543574115';
-                          let nfNum = '1108599';
+                          let key = '35260243631191000100550020010732631165266879';
+                          let nfNum = '1073263';
                           if (digits.length >= 7) {
                             if (digits.length >= 44) {
                               key = digits.substring(0, 44);
-                              nfNum = digits.substring(25, 34).replace(/^0+/, '') || '1108599';
+                              nfNum = digits.substring(25, 34).replace(/^0+/, '') || '1073263';
                             } else {
                               nfNum = digits.substring(0, 7);
                             }
                           }
                           
-                          const brand = selectedDocsAwb.Marca || 'ASICS';
                           const supplier = selectedDocsAwb.Fornecedor || 'BRANYL COM. IND. TEXTIL LTDA.';
                           const formattedKey = key.replace(/(.{4})/g, '$1 ').trim();
-                          
-                          // Itens calculados dinamicamente
-                          const items = [
-                            {
-                              cod: 'L4T3150',
-                              desc: `TECIDO TINTO 100% POLIESTER AS6964 /T3 1,50M GR.212,00 g/m2 COD: 1419051. LOTE: 227335; ITEM DO PEDIDO: 1419051`,
-                              ncm: '54075210',
-                              cst: '000',
-                              cfop: '6101',
-                              unid: 'MT',
-                              qtd: '17,4000',
-                              unit: '38,25',
-                              total: '665,55'
-                            },
-                            {
-                              cod: 'L4T4150',
-                              desc: `TECIDO TINTO 100% POLIESTER AS6964 /T4 1,50M GR.212,00 g/m2 COD: 1419051. LOTE: 227335; ITEM DO PEDIDO: 1419051`,
-                              ncm: '54075210',
-                              cst: '000',
-                              cfop: '6101',
-                              unid: 'MT',
-                              qtd: '14,0000',
-                              unit: '38,25',
-                              total: '535,48'
-                            }
-                          ];
 
                           return (
                             <div className="space-y-2 text-black font-sans">
@@ -2736,268 +2561,6 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
                                   </div>
                                   <div className="border-t border-slate-950 pt-1 mt-1 text-[6.5px] text-slate-700 text-center font-medium leading-none">
                                     Consulta no portal nacional da NF-e www.nfe.fazenda.gov.br
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Natureza da Operação / Protocolo */}
-                              <div className="grid grid-cols-12 border border-slate-950 divide-x divide-slate-950 text-[7px]">
-                                <div className="col-span-7 p-1">
-                                  <span className="text-[6px] text-slate-500 block uppercase">Natureza da Operação</span>
-                                  <span className="font-bold uppercase text-[7.5px]">VENDA DE MERCADORIA ADQUIRIDA OU RECEBIDA</span>
-                                </div>
-                                <div className="col-span-5 p-1">
-                                  <span className="text-[6px] text-slate-500 block uppercase">Protocolo de Autorização de Uso</span>
-                                  <span className="font-bold uppercase text-[7.5px]">135262735987044 - 09/07/2026 16:59:24</span>
-                                </div>
-                              </div>
-
-                              {/* Inscrições */}
-                              <div className="grid grid-cols-3 border border-slate-950 divide-x divide-slate-950 p-1 text-[7.5px]">
-                                <div>
-                                  <span className="text-[6px] text-slate-500 block uppercase">Inscrição Estadual</span>
-                                  <span className="font-bold">253010554119</span>
-                                </div>
-                                <div>
-                                  <span className="text-[6px] text-slate-500 block uppercase">Insc. Est. Subst. Trib.</span>
-                                  <span className="font-bold">-</span>
-                                </div>
-                                <div>
-                                  <span className="text-[6px] text-slate-500 block uppercase">CNPJ</span>
-                                  <span className="font-bold">43.631.191/0001-00</span>
-                                </div>
-                              </div>
-
-                              {/* Destinatário */}
-                              <div className="border border-slate-950">
-                                <div className="bg-slate-100 px-1.5 py-0.5 font-bold border-b border-slate-950 text-[6.5px] uppercase text-slate-700">Destinatário / Remetente</div>
-                                <div className="p-1 grid grid-cols-12 gap-1">
-                                  <div className="col-span-8">
-                                    <span className="text-[6px] text-slate-500 block">NOME / RAZÃO SOCIAL</span>
-                                    <span className="font-extrabold text-[8px]">DASS NORDESTE CALCADOS E ARTIGOS ESPORTIVOS LTDA</span>
-                                  </div>
-                                  <div className="col-span-4 border-l border-slate-950/20 pl-1.5">
-                                    <span className="text-[6px] text-slate-500 block">CNPJ / CPF</span>
-                                    <span className="font-bold text-[8px]">01.287.588/0005-00</span>
-                                  </div>
-                                </div>
-                                <div className="p-1 border-t border-slate-950 grid grid-cols-12 gap-1">
-                                  <div className="col-span-6">
-                                    <span className="text-[6px] text-slate-500 block">ENDEREÇO</span>
-                                    <span className="font-semibold">AV LUIS VIANA FILHO, SN - CENTRO</span>
-                                  </div>
-                                  <div className="col-span-3 border-l border-slate-950/20 pl-1.5">
-                                    <span className="text-[6px] text-slate-500 block">BAIRRO / DISTRITO</span>
-                                    <span className="font-semibold">CENTRO</span>
-                                  </div>
-                                  <div className="col-span-3 border-l border-slate-950/20 pl-1.5">
-                                    <span className="text-[6px] text-slate-500 block">CEP</span>
-                                    <span className="font-semibold">46880-000</span>
-                                  </div>
-                                </div>
-                                <div className="p-1 border-t border-slate-950 grid grid-cols-12 gap-1 text-[7.5px]">
-                                  <div className="col-span-5">
-                                    <span className="text-[6px] text-slate-500 block">MUNICÍPIO</span>
-                                    <span className="font-bold">ITABERABA</span>
-                                  </div>
-                                  <div className="col-span-1 border-l border-slate-950/20 pl-1">
-                                    <span className="text-[6px] text-slate-500 block">UF</span>
-                                    <span className="font-bold">BA</span>
-                                  </div>
-                                  <div className="col-span-3 border-l border-slate-950/20 pl-1.5">
-                                    <span className="text-[6px] text-slate-500 block">FONE / FAX</span>
-                                    <span className="font-semibold">(75) 3223-5162</span>
-                                  </div>
-                                  <div className="col-span-3 border-l border-slate-950/20 pl-1.5">
-                                    <span className="text-[6px] text-slate-500 block">INSCRIÇÃO ESTADUAL</span>
-                                    <span className="font-bold">064696094</span>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Fatura */}
-                              <div className="border border-slate-950">
-                                <div className="bg-slate-100 px-1.5 py-0.5 font-bold border-b border-slate-950 text-[6.5px] uppercase text-slate-700">Fatura / Duplicatas</div>
-                                <div className="p-1.5 flex gap-10">
-                                  <div>
-                                    <span className="text-[6px] text-slate-500 block">NÚMERO</span>
-                                    <span className="font-extrabold text-[7.5px]">001</span>
-                                  </div>
-                                  <div>
-                                    <span className="text-[6px] text-slate-500 block">VENCIMENTO</span>
-                                    <span className="font-extrabold text-[7.5px] text-emerald-700">15/10/2026</span>
-                                  </div>
-                                  <div>
-                                    <span className="text-[6px] text-slate-500 block">VALOR ORIGINAL</span>
-                                    <span className="font-extrabold text-[7.5px]">R$ 1.201,05</span>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Impostos */}
-                              <div className="border border-slate-950">
-                                <div className="bg-slate-100 px-1.5 py-0.5 font-bold border-b border-slate-950 text-[6.5px] uppercase text-slate-700">Cálculo do Imposto</div>
-                                <div className="grid grid-cols-5 divide-x divide-slate-950 border-b border-slate-950 p-1 text-center text-[7.5px]">
-                                  <div>
-                                    <span className="text-[5.5px] text-slate-500 block">BASE DE CÁLCULO DO ICMS</span>
-                                    <span className="font-bold">R$ 1.201,05</span>
-                                  </div>
-                                  <div>
-                                    <span className="text-[5.5px] text-slate-500 block">VALOR DO ICMS</span>
-                                    <span className="font-bold">R$ 84,07</span>
-                                  </div>
-                                  <div>
-                                    <span className="text-[5.5px] text-slate-500 block">BASE DE CÁLC. ICMS S.T.</span>
-                                    <span className="font-bold">R$ 0,00</span>
-                                  </div>
-                                  <div>
-                                    <span className="text-[5.5px] text-slate-500 block">VALOR DO ICMS S.T.</span>
-                                    <span className="font-bold">R$ 0,00</span>
-                                  </div>
-                                  <div>
-                                    <span className="text-[5.5px] text-slate-500 block">VALOR TOTAL DOS PRODUTOS</span>
-                                    <span className="font-bold">R$ 1.201,05</span>
-                                  </div>
-                                </div>
-                                <div className="grid grid-cols-5 divide-x divide-slate-950 p-1 text-center text-[7.5px]">
-                                  <div>
-                                    <span className="text-[5.5px] text-slate-500 block">VALOR DO FRETE</span>
-                                    <span className="font-bold">R$ 0,00</span>
-                                  </div>
-                                  <div>
-                                    <span className="text-[5.5px] text-slate-500 block">VALOR DO SEGURO</span>
-                                    <span className="font-bold">R$ 0,00</span>
-                                  </div>
-                                  <div>
-                                    <span className="text-[5.5px] text-slate-500 block">DESCONTO</span>
-                                    <span className="font-bold">R$ 0,00</span>
-                                  </div>
-                                  <div>
-                                    <span className="text-[5.5px] text-slate-500 block">VALOR DO IPI</span>
-                                    <span className="font-bold">R$ 0,00</span>
-                                  </div>
-                                  <div>
-                                    <span className="text-[5.5px] text-slate-500 block">VALOR TOTAL DA NOTA</span>
-                                    <span className="font-extrabold text-[8px] text-blue-800">R$ 1.201,05</span>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Transportador */}
-                              <div className="border border-slate-950">
-                                <div className="bg-slate-100 px-1.5 py-0.5 font-bold border-b border-slate-950 text-[6.5px] uppercase text-slate-700">Transportador / Volumes Transportados</div>
-                                <div className="p-1 grid grid-cols-12 gap-1 text-[7.5px]">
-                                  <div className="col-span-5">
-                                    <span className="text-[6px] text-slate-500 block">RAZÃO SOCIAL</span>
-                                    <span className="font-extrabold uppercase">{selectedDocsAwb.Transportadora || 'SK TRANSPORTE E LOGISTICA LTDA'}</span>
-                                  </div>
-                                  <div className="col-span-2 border-l border-slate-950/10 pl-1">
-                                    <span className="text-[6px] text-slate-500 block">FRETE POR CONTA</span>
-                                    <span className="font-semibold">0-Remetente</span>
-                                  </div>
-                                  <div className="col-span-2 border-l border-slate-950/10 pl-1">
-                                    <span className="text-[6px] text-slate-500 block">CÓDIGO ANTT</span>
-                                    <span className="font-semibold">-</span>
-                                  </div>
-                                  <div className="col-span-3 border-l border-slate-950/10 pl-1.5">
-                                    <span className="text-[6px] text-slate-500 block">CNPJ / CPF</span>
-                                    <span className="font-bold">39.283.025/0001-85</span>
-                                  </div>
-                                </div>
-                                <div className="p-1 border-t border-slate-950 grid grid-cols-12 gap-1 text-[7.5px]">
-                                  <div className="col-span-5">
-                                    <span className="text-[6px] text-slate-500 block">ENDEREÇO</span>
-                                    <span className="font-semibold">AV LUIS VIANA FILHO, SN</span>
-                                  </div>
-                                  <div className="col-span-3 border-l border-slate-950/10 pl-1.5">
-                                    <span className="text-[6px] text-slate-500 block">MUNICÍPIO</span>
-                                    <span className="font-bold">ITABERABA</span>
-                                  </div>
-                                  <div className="col-span-1 border-l border-slate-950/10 pl-1">
-                                    <span className="text-[6px] text-slate-500 block">UF</span>
-                                    <span className="font-bold">BA</span>
-                                  </div>
-                                  <div className="col-span-3 border-l border-slate-950/10 pl-1.5">
-                                    <span className="text-[6px] text-slate-500 block">INSCRIÇÃO ESTADUAL</span>
-                                    <span className="font-semibold">-</span>
-                                  </div>
-                                </div>
-                                <div className="p-1 border-t border-slate-950 grid grid-cols-5 gap-1 text-center text-[7.5px]">
-                                  <div>
-                                    <span className="text-[6px] text-slate-500 block">QUANTIDADE</span>
-                                    <span className="font-semibold">2</span>
-                                  </div>
-                                  <div>
-                                    <span className="text-[6px] text-slate-500 block">ESPÉCIE</span>
-                                    <span className="font-semibold">VOLUMES</span>
-                                  </div>
-                                  <div>
-                                    <span className="text-[6px] text-slate-500 block">MARCA</span>
-                                    <span className="font-semibold">{brand}</span>
-                                  </div>
-                                  <div>
-                                    <span className="text-[6px] text-slate-500 block">PESO BRUTO</span>
-                                    <span className="font-semibold">9,720 kg</span>
-                                  </div>
-                                  <div>
-                                    <span className="text-[6px] text-slate-500 block">PESO LÍQUIDO</span>
-                                    <span className="font-semibold">9,720 kg</span>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Tabela de Itens */}
-                              <div className="border border-slate-950">
-                                <div className="bg-slate-100 px-1.5 py-0.5 font-bold border-b border-slate-950 text-[6.5px] uppercase text-slate-700">Dados dos Produtos / Serviços</div>
-                                <table className="w-full text-left text-[6.5px] border-collapse font-sans">
-                                  <thead>
-                                    <tr className="bg-slate-50 border-b border-slate-950 text-slate-800 font-bold uppercase">
-                                      <th className="p-1 border-r border-slate-950 w-[12%]">Código</th>
-                                      <th className="p-1 border-r border-slate-950 w-[48%]">Descrição dos Produtos / Serviços</th>
-                                      <th className="p-1 border-r border-slate-950 w-[8%]">NCM/SH</th>
-                                      <th className="p-1 border-r border-slate-950 w-[5%] text-center">CST</th>
-                                      <th className="p-1 border-r border-slate-950 w-[5%] text-center">CFOP</th>
-                                      <th className="p-1 border-r border-slate-950 w-[5%] text-center">UNID</th>
-                                      <th className="p-1 border-r border-slate-950 w-[6%] text-right">Qtd</th>
-                                      <th className="p-1 border-r border-slate-950 w-[6%] text-right">V.Unit</th>
-                                      <th className="p-1 text-right w-[5%]">V.Total</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody className="divide-y divide-slate-950/20 font-medium text-slate-900">
-                                    {items.map((it, idx) => (
-                                      <tr key={idx}>
-                                        <td className="p-1 border-r border-slate-950 font-mono text-[6px]">{it.cod}</td>
-                                        <td className="p-1 border-r border-slate-950 uppercase text-[5.8px] leading-tight font-sans">
-                                          {it.desc}
-                                        </td>
-                                        <td className="p-1 border-r border-slate-950 font-mono text-[6px]">{it.ncm}</td>
-                                        <td className="p-1 border-r border-slate-950 text-center font-mono">{it.cst}</td>
-                                        <td className="p-1 border-r border-slate-950 text-center font-mono">{it.cfop}</td>
-                                        <td className="p-1 border-r border-slate-950 text-center">{it.unid}</td>
-                                        <td className="p-1 border-r border-slate-950 text-right font-mono">{it.qtd}</td>
-                                        <td className="p-1 border-r border-slate-950 text-right font-mono">{it.unit}</td>
-                                        <td className="p-1 text-right font-mono font-bold">{it.total}</td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-
-                              {/* Informações Adicionais */}
-                              <div className="border border-slate-950 text-[6.5px]">
-                                <div className="bg-slate-100 px-1.5 py-0.5 font-bold border-b border-slate-950 text-[6.5px] uppercase text-slate-700">Dados Adicionais</div>
-                                <div className="p-1.5 grid grid-cols-12 gap-1">
-                                  <div className="col-span-8 pr-3 text-slate-800 leading-normal font-medium">
-                                    <span className="text-[6px] text-slate-500 block uppercase font-bold mb-0.5">Informações Complementares</span>
-                                    <p className="whitespace-pre-line text-[6px]">
-                                      ALIQUOTA DO IPI REDUZIDA A ZERO CONF. DEC. LEI 1686/79 COMPRADOR: REGIS.<br />
-                                      Entrega: AV LUIS VIANA FILHO, SN - ITABERABA - BA. Pedido(s): 208137/OC:15684603.<br />
-                                      Havendo atraso no pagto da(s) duplicata(s) correspondente(s) a esta N.F. incidiraao juros de 1% ao mes ou fracao e multa de 2% apos o vencimento. ATENCAO: Caso nao receba o boleto ate 02 dias do vencimento, ligar para Dep. Cobranca.
-                                    </p>
-                                  </div>
-                                  <div className="col-span-4 border-l border-slate-950/20 pl-2 flex flex-col justify-between">
-                                    <span className="text-[6px] text-slate-500 block uppercase font-bold">RESERVADO AO FISCO</span>
-                                    <div className="h-6"></div>
                                   </div>
                                 </div>
                               </div>

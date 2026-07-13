@@ -79,7 +79,7 @@ export default function Configuracao({
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [newUser, setNewUser] = useState({ name: '', role: 'Operador', email: '' });
+  const [newUser, setNewUser] = useState({ name: '', role: 'Operador', email: '', password: '' });
   const [savingId, setSavingId] = useState<number | null>(null);
 
   const [openMenuId, setOpenMenuId] = useState<any | null>(null);
@@ -357,7 +357,7 @@ export default function Configuracao({
     try {
       if (editingUser) {
         // Editar usuário existente
-        const updatedUser = {
+        const updatedUser: any = {
           ...editingUser,
           'USUÁRIO': newUser.name,
           'E-MAIL': newUser.email,
@@ -369,6 +369,12 @@ export default function Configuracao({
           ID: editingUser.id || editingUser.ID,
           id: editingUser.id || editingUser.ID
         };
+
+        const passStr = String(newUser.password || '').trim();
+        if (passStr !== '') {
+          updatedUser['SENHA'] = passStr;
+          updatedUser['password'] = passStr;
+        }
 
         await api.post('updateUser', updatedUser);
         dataCache.invalidate('allUsers');
@@ -414,7 +420,7 @@ export default function Configuracao({
         setUsers([...users, addedWithPerms]);
       }
       
-      setNewUser({ name: '', role: 'Operador', email: '' });
+      setNewUser({ name: '', role: 'Operador', email: '', password: '' });
       setIsModalOpen(false);
     } catch (error) {
       console.error('Erro ao salvar usuário:', error);
@@ -479,7 +485,7 @@ export default function Configuracao({
             <button 
               onClick={() => {
                 setEditingUser(null);
-                setNewUser({ name: '', email: '', role: 'Operador' });
+                setNewUser({ name: '', email: '', role: 'Operador', password: '' });
                 setIsModalOpen(true);
               }}
               className="bg-blue-600 text-white px-4.5 py-2.5 rounded-xl flex items-center gap-2 hover:bg-blue-700 transition-all duration-150 shadow-md font-semibold text-sm self-start md:self-auto cursor-pointer"
@@ -644,7 +650,8 @@ export default function Configuracao({
                                         setNewUser({
                                           name: userName,
                                           email: userEmail,
-                                          role: userRole
+                                          role: userRole,
+                                          password: String(user.password || user['SENHA'] || '')
                                         });
                                         setIsModalOpen(true);
                                         setOpenMenuId(null);
@@ -899,6 +906,20 @@ export default function Configuracao({
                 </div>
 
                 <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1">
+                    Senha {editingUser && <span className="text-gray-400 font-normal text-xs">(Deixe em branco para não alterar)</span>}
+                  </label>
+                  <input
+                    type="text"
+                    value={newUser.password}
+                    onChange={(e) => setNewUser({...newUser, password: e.target.value})}
+                    className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 outline-none text-gray-800 text-sm font-medium"
+                    placeholder={editingUser ? "Manter senha atual" : "Digite a senha para o novo usuário"}
+                    required={!editingUser}
+                  />
+                </div>
+
+                <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Função</label>
                   <select
                     value={newUser.role}
@@ -906,6 +927,8 @@ export default function Configuracao({
                     className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 outline-none bg-white text-gray-800 text-sm font-medium"
                   >
                     <option value="Operador">Operador</option>
+                    <option value="Auxiliar">Auxiliar</option> 
+                    <option value="Assistente">Assistente</option>
                     <option value="Admin">Administrador</option>
                   </select>
                 </div>

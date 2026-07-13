@@ -56,18 +56,18 @@ function doPost(e) {
         result = getMaterialByProduto(data);
         break;
       case 'getMateriasData':
-        result = getSheetData('Matérias');
+        result = getSheetData('Follow Material Prima');
         break;
       case 'saveMateriaData':
         if (data.id) {
-          result = updateRow('Matérias', data.id, data);
+          result = updateRow('Follow Material Prima', data.id, data);
         } else {
           data.id = Utilities.getUuid();
-          result = appendRow('Matérias', data);
+          result = appendRow('Follow Material Prima', data);
         }
         break;
       case 'deleteMateriaData':
-        result = deleteRow('Matérias', data.id);
+        result = deleteRow('Follow Material Prima', data.id);
         break;
       case 'getAwbData':
         result = getAwbData();
@@ -315,7 +315,10 @@ function deleteMultiplePainelData(dataArray) {
 }
 
 function getMaterialByProduto(data) {
-  var materias = getSheetData('Matérias');
+  var materias = getSheetData('Follow Material Prima');
+  if (!materias || materias.length === 0) {
+    materias = getSheetData('Matérias');
+  }
   var searchTerm = String(data.produto).trim().toLowerCase();
   
   for (var i = 0; i < materias.length; i++) {
