@@ -18,7 +18,13 @@ import {
   MoreVertical,
   Edit2,
   UserCheck,
-  UserX
+  UserX,
+  Settings,
+  Plane,
+  Box,
+  Activity,
+  Plus,
+  FileUp
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { api } from '@/lib/api';
@@ -79,6 +85,89 @@ export default function Configuracao({
   const [openMenuId, setOpenMenuId] = useState<any | null>(null);
   const [editingUser, setEditingUser] = useState<any | null>(null);
 
+  // States for Follow-up Sub-permissions Modal
+  const [selectedSubPermUser, setSelectedSubPermUser] = useState<any | null>(null);
+  const [subPermsForm, setSubPermsForm] = useState<any>(null);
+
+  useEffect(() => {
+    if (selectedSubPermUser) {
+      setSubPermsForm({ ...(selectedSubPermUser.permissions || {}) });
+    } else {
+      setSubPermsForm(null);
+    }
+  }, [selectedSubPermUser]);
+
+  const handleToggleFormSubPerm = (key: string) => {
+    setSubPermsForm((prev: any) => {
+      if (!prev) return prev;
+      
+      const updated = {
+        ...prev,
+        [key]: !prev[key]
+      };
+      
+      // Se desativar o followup_awb, desliga as sub-permissões dele também para consistência visual
+      if (key === 'followup_awb' && !updated[key]) {
+        updated.followup_awb_novo = false;
+        updated.followup_awb_acoes = false;
+        updated.followup_awb_anexar = false;
+      }
+      
+      // Se ativar o followup_awb e as sub-permissões estavam todas desligadas, liga-as como padrão
+      if (key === 'followup_awb' && updated[key]) {
+        if (!updated.followup_awb_novo && !updated.followup_awb_acoes && !updated.followup_awb_anexar) {
+          updated.followup_awb_novo = true;
+          updated.followup_awb_acoes = true;
+          updated.followup_awb_anexar = true;
+        }
+      }
+
+      return updated;
+    });
+  };
+
+  const handleSaveSubPerms = async () => {
+    if (!selectedSubPermUser || !subPermsForm) return;
+    const userId = selectedSubPermUser.id || selectedSubPermUser['ID'];
+    
+    // Atualiza localmente a lista de usuários com as novas permissões consolidadas
+    const updatedUsers = users.map(u => {
+      const currentId = u.id || u['ID'];
+      if (currentId === userId) {
+        return {
+          ...u,
+          permissions: {
+            ...u.permissions,
+            ...subPermsForm
+          }
+        };
+      }
+      return u;
+    });
+    setUsers(updatedUsers);
+    
+    // Salva no banco de dados via API
+    const userToSave = updatedUsers.find(u => (u.id || u['ID']) === userId);
+    if (userToSave) {
+      setSavingId(userId);
+      try {
+        const dataToSave = { 
+          ...userToSave, 
+          ID: userId,
+          'Permissões de Tela (Módulos)': JSON.stringify(userToSave.permissions)
+        };
+        await api.post('updateUser', dataToSave);
+        dataCache.invalidate('allUsers');
+      } catch (err) {
+        console.error('Erro ao salvar sub-permissões do usuário no banco:', err);
+      } finally {
+        setSavingId(null);
+      }
+    }
+    
+    setSelectedSubPermUser(null);
+  };
+
   // Profile Form States
   const [profileName, setProfileName] = useState(currentUser?.nome || currentUser?.USUÁRIO || currentUser?.name || '');
   const [profileEmail, setProfileEmail] = useState(currentUser?.email || currentUser?.['E-MAIL'] || '');
@@ -122,7 +211,13 @@ export default function Configuracao({
           programacaoPCP: true,
           followup: true,
           chat: true,
-          config: isAdminUser
+          config: isAdminUser,
+          followup_solicitacoes: true,
+          followup_materias: true,
+          followup_awb: true,
+          followup_awb_novo: true,
+          followup_awb_acoes: true,
+          followup_awb_anexar: true
         };
         
         // Tentar buscar da coluna da planilha
@@ -144,7 +239,13 @@ export default function Configuracao({
               programacaoPCP: parsed.programacaoPCP !== false,
               followup: parsed.followup !== false,
               chat: parsed.chat !== false,
-              config: parsed.config !== undefined ? parsed.config === true : isAdminUser
+              config: parsed.config !== undefined ? parsed.config === true : isAdminUser,
+              followup_solicitacoes: parsed.followup_solicitacoes !== false,
+              followup_materias: parsed.followup_materias !== false,
+              followup_awb: parsed.followup_awb !== false,
+              followup_awb_novo: parsed.followup_awb_novo !== false,
+              followup_awb_acoes: parsed.followup_awb_acoes !== false,
+              followup_awb_anexar: parsed.followup_awb_anexar !== false
             };
           } catch (e) {
             console.warn('Erro ao parsear permissões para o usuário', u['USUÁRIO']);
@@ -175,16 +276,51 @@ export default function Configuracao({
     }));
   };
 
-  const toggleStatus = (userId: any) => {
+  const toggleStatus = async (userId: any) => {
+    const userToUpdate = users.find(u => (u.id || u['ID']) === userId);
+    if (!userToUpdate) return;
+
+    const currentStatus = userToUpdate.status || userToUpdate['STATUS'] || 'ativo';
+    const newStatus = currentStatus.toLowerCase() === 'ativo' ? 'inativo' : 'ativo';
+    
+    // Atualiza localmente primeiro para resposta rápida na interface
+    const updatedUser = { 
+      ...userToUpdate, 
+      status: newStatus, 
+      'STATUS': newStatus 
+    };
+
     setUsers(users.map(u => {
       const currentId = u.id || u['ID'];
       if (currentId === userId) {
-        const currentStatus = u.status || u['STATUS'] || 'ativo';
-        const newStatus = currentStatus.toLowerCase() === 'ativo' ? 'inativo' : 'ativo';
-        return { ...u, status: newStatus, 'STATUS': newStatus };
+        return updatedUser;
       }
       return u;
     }));
+
+    setSavingId(userId);
+    try {
+      const dataToSave = {
+        ...updatedUser,
+        ID: userId,
+        'Permissões de Tela (Módulos)': JSON.stringify(updatedUser.permissions || {})
+      };
+      await api.post('updateUser', dataToSave);
+      dataCache.invalidate('allUsers');
+      console.log('[DEBUG] Status do usuário salvo com sucesso no banco de dados:', newStatus);
+    } catch (error) {
+      console.error('Erro ao salvar status do usuário no banco:', error);
+      // Reverte o estado local em caso de falha na API
+      setUsers(users.map(u => {
+        const currentId = u.id || u['ID'];
+        if (currentId === userId) {
+          return userToUpdate;
+        }
+        return u;
+      }));
+    } finally {
+      setSavingId(null);
+    }
   };
 
   const handleSaveUser = async (userId: any) => {
@@ -266,7 +402,13 @@ export default function Configuracao({
             programacaoPCP: true,
             followup: true,
             chat: true,
-            config: newUser.role === 'Admin'
+            config: newUser.role === 'Admin',
+            followup_solicitacoes: true,
+            followup_materias: true,
+            followup_awb: true,
+            followup_awb_novo: true,
+            followup_awb_acoes: true,
+            followup_awb_anexar: true
           }
         };
         setUsers([...users, addedWithPerms]);
@@ -419,42 +561,66 @@ export default function Configuracao({
                         const userRole = user.role || user['PAPEL'] || user['Papel'] || 'User';
                         const userStatus = user.status || user['STATUS'] || user['Status'] || 'Ativo';
                         const userId = user.id || user['ID'] || Math.random();
+                        const isInactive = userStatus.toLowerCase() === 'inativo';
 
                         return (
-                          <tr key={userId} className={`border-b border-gray-100 hover:bg-blue-50/30 transition-colors ${userStatus.toLowerCase() === 'inativo' ? 'opacity-60 font-medium' : ''}`}>
+                          <tr 
+                            key={userId} 
+                            className={`border-b border-gray-100 hover:bg-blue-50/30 transition-colors ${
+                              openMenuId === userId ? 'z-30 relative' : ''
+                            }`}
+                          >
                             <td className="p-4">
-                              <div className="flex items-center gap-3">
+                              <div className={`flex items-center gap-3 transition-opacity duration-150 ${isInactive ? 'opacity-50' : ''}`}>
                                 <div className="relative flex-shrink-0">
-                                  <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-blue-600 to-sky-500 flex items-center justify-center text-white text-sm font-bold shadow-sm uppercase">
+                                  <div className={`w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold shadow-sm uppercase ${isInactive ? 'bg-gray-400 grayscale' : 'bg-gradient-to-tr from-blue-600 to-sky-500'}`}>
                                     {userName.substring(0, 2)}
                                   </div>
-                                  <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white flex-shrink-0 ${userStatus.toLowerCase() === 'ativo' ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+                                  <div className={`absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-white flex-shrink-0 ${isInactive ? 'bg-gray-400' : 'bg-green-500'}`}></div>
                                 </div>
                                 <div className="truncate max-w-[180px]">
-                                  <span className="block font-semibold text-gray-950 text-sm truncate" title={userName}>{userName}</span>
-                                  <span className="block text-xs text-gray-600 font-medium truncate mt-0.5" title={userEmail}>{userEmail}</span>
+                                  <span className={`block font-semibold text-sm truncate ${isInactive ? 'text-gray-500 line-through' : 'text-gray-950'}`} title={userName}>
+                                    {userName} {isInactive && <span className="text-[10px] font-bold text-red-500 line-through-none no-underline ml-1">(Inativo)</span>}
+                                  </span>
+                                  <span className="block text-xs text-gray-500 font-medium truncate mt-0.5" title={userEmail}>{userEmail}</span>
                                 </div>
                               </div>
                             </td>
                             <td className="p-4 text-gray-600">
-                              <span className={`px-2 py-1 rounded-full text-xs font-semibold ${userRole === 'Admin' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}>
-                                {userRole}
-                              </span>
+                              <div className={`transition-opacity duration-150 ${isInactive ? 'opacity-50' : ''}`}>
+                                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${isInactive ? 'bg-gray-200 text-gray-500 border border-gray-300' : userRole === 'Admin' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}>
+                                  {userRole}
+                                </span>
+                              </div>
                             </td>
                             {MODULES.map(m => {
                               const permissions = user.permissions || {};
                               const hasPermission = permissions[m.key as keyof typeof permissions] || false;
                               return (
                                 <td key={m.key} className="p-2 text-center">
-                                  <ToggleSwitch 
-                                    checked={hasPermission}
-                                    onChange={() => togglePermission(userId, m.key)}
-                                    disabled={userStatus.toLowerCase() === 'inativo'}
-                                  />
+                                  <div className={`flex flex-col items-center justify-center gap-1 transition-opacity duration-150 ${isInactive ? 'opacity-50' : ''}`}>
+                                    <ToggleSwitch 
+                                      checked={hasPermission}
+                                      onChange={() => togglePermission(userId, m.key)}
+                                      disabled={isInactive}
+                                    />
+                                    {m.key === 'followup' && hasPermission && (
+                                      <button
+                                        type="button"
+                                        onClick={() => setSelectedSubPermUser(user)}
+                                        className="mt-1 px-1.5 py-0.5 rounded text-[10px] bg-slate-100 hover:bg-orange-50 hover:text-orange-600 border border-slate-200 text-slate-600 flex items-center gap-1 cursor-pointer transition-colors font-medium shadow-sm"
+                                        title="Configurar sub-permissões"
+                                        disabled={isInactive}
+                                      >
+                                        <Settings size={10} className="text-orange-500 animate-spin-slow" />
+                                        <span>Acesso</span>
+                                      </button>
+                                    )}
+                                  </div>
                                 </td>
                               );
                             })}
-                            <td className="p-4 text-center relative">
+                            <td className={`p-4 text-center relative ${openMenuId === userId ? 'z-50' : 'z-10'}`}>
                               <div className="flex items-center justify-center">
                                 <button 
                                   onClick={() => setOpenMenuId(openMenuId === userId ? null : userId)}
@@ -495,20 +661,20 @@ export default function Configuracao({
                                         setOpenMenuId(null);
                                       }}
                                       className={`w-full px-4 py-2.5 text-sm flex items-center gap-2.5 font-medium cursor-pointer ${
-                                        userStatus.toLowerCase() === 'ativo' 
-                                          ? 'text-red-600 hover:bg-red-50' 
-                                          : 'text-green-600 hover:bg-green-50'
+                                        isInactive 
+                                          ? 'text-green-600 hover:bg-green-50'
+                                          : 'text-red-600 hover:bg-red-50'
                                       }`}
                                     >
-                                      {userStatus.toLowerCase() === 'ativo' ? (
-                                        <>
-                                          <UserX size={15} className="text-red-500" />
-                                          Inativar
-                                        </>
-                                      ) : (
+                                      {isInactive ? (
                                         <>
                                           <UserCheck size={15} className="text-green-500" />
                                           Ativar
+                                        </>
+                                      ) : (
+                                        <>
+                                          <UserX size={15} className="text-red-500" />
+                                          Inativar
                                         </>
                                       )}
                                     </button>
@@ -520,7 +686,7 @@ export default function Configuracao({
                                         handleSaveUser(userId);
                                         setOpenMenuId(null);
                                       }}
-                                      disabled={userStatus.toLowerCase() === 'inativo' || savingId === userId}
+                                      disabled={savingId === userId}
                                       className="w-full px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2.5 font-medium cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                                     >
                                       {savingId === userId ? (
@@ -760,6 +926,192 @@ export default function Configuracao({
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal Sub-permissões Follow-up (Controle de Acesso) */}
+      <AnimatePresence>
+        {selectedSubPermUser && subPermsForm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedSubPermUser(null)}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl shadow-xl w-full max-w-lg relative z-10 overflow-hidden"
+            >
+              <div className="flex items-center justify-between p-6 border-b border-gray-100 bg-slate-50">
+                <div>
+                  <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                    <Shield className="text-orange-500" size={20} />
+                    Nível de Acesso: Follow-up
+                  </h2>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Defina as permissões específicas do usuário: <span className="font-semibold text-gray-700">{selectedSubPermUser.name || selectedSubPermUser['USUÁRIO']}</span>
+                  </p>
+                </div>
+                <button 
+                  onClick={() => setSelectedSubPermUser(null)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-lg hover:bg-gray-100 cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-5 max-h-[70vh] overflow-auto">
+                {/* 1. SEÇÃO: ACESSO ÀS SUB-TELAS PRINCIPAIS */}
+                <div className="space-y-3.5">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Sub-telas Disponíveis</h3>
+                  
+                  {/* Solicitações */}
+                  <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-orange-100 text-orange-600 rounded-lg">
+                        <Activity size={18} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-gray-800">Follow-up Solicitações</p>
+                        <p className="text-[11px] text-gray-500">Visualizar e acompanhar as solicitações de compras</p>
+                      </div>
+                    </div>
+                    <ToggleSwitch 
+                      checked={!!subPermsForm.followup_solicitacoes}
+                      onChange={() => handleToggleFormSubPerm('followup_solicitacoes')}
+                    />
+                  </div>
+
+                  {/* Matéria-Prima */}
+                  <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-orange-100 text-orange-600 rounded-lg">
+                        <Box size={18} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-gray-800">Matéria-Prima</p>
+                        <p className="text-[11px] text-gray-500">Visualizar estoque, fornecedores e status de MP</p>
+                      </div>
+                    </div>
+                    <ToggleSwitch 
+                      checked={!!subPermsForm.followup_materias}
+                      onChange={() => handleToggleFormSubPerm('followup_materias')}
+                    />
+                  </div>
+
+                  {/* Follow-up AWB */}
+                  <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-orange-100 text-orange-600 rounded-lg">
+                        <Plane size={18} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-gray-800">Follow Up AWB</p>
+                        <p className="text-[11px] text-gray-500">Acompanhar remessas aéreas, tracking e NFs</p>
+                      </div>
+                    </div>
+                    <ToggleSwitch 
+                      checked={!!subPermsForm.followup_awb}
+                      onChange={() => handleToggleFormSubPerm('followup_awb')}
+                    />
+                  </div>
+                </div>
+
+                {/* 2. SEÇÃO: CONTROLE DETALHADO DENTRO DE AWB */}
+                <AnimatePresence initial={false}>
+                  {subPermsForm.followup_awb && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="space-y-3 pt-2 border-t border-slate-100 overflow-hidden"
+                    >
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Permissões de Ação (Follow Up AWB)</h3>
+                      
+                      <div className="pl-4 border-l-2 border-orange-500 space-y-3">
+                        {/* Novo Embarque */}
+                        <div className="flex items-center justify-between p-3 bg-orange-50/20 rounded-xl border border-orange-500/10">
+                          <div>
+                            <p className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                              <Plus size={14} className="text-orange-600" />
+                              Novo Embarque
+                            </p>
+                            <p className="text-[10px] text-gray-500">Permitir cadastrar novas remessas de AWB</p>
+                          </div>
+                          <ToggleSwitch 
+                            checked={!!subPermsForm.followup_awb_novo}
+                            onChange={() => handleToggleFormSubPerm('followup_awb_novo')}
+                          />
+                        </div>
+
+                        {/* Ações */}
+                        <div className="flex items-center justify-between p-3 bg-orange-50/20 rounded-xl border border-orange-500/10">
+                          <div>
+                            <p className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                              <Settings size={14} className="text-orange-600" />
+                              Ações (Editar/Excluir)
+                            </p>
+                            <p className="text-[10px] text-gray-500">Permitir editar e excluir remessas existentes</p>
+                          </div>
+                          <ToggleSwitch 
+                            checked={!!subPermsForm.followup_awb_acoes}
+                            onChange={() => handleToggleFormSubPerm('followup_awb_acoes')}
+                          />
+                        </div>
+
+                        {/* Anexar Novo Documento (PDF) */}
+                        <div className="flex items-center justify-between p-3 bg-orange-50/20 rounded-xl border border-orange-500/10">
+                          <div>
+                            <p className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                              <FileUp size={14} className="text-orange-600" />
+                              Anexar Novo Documento (PDF)
+                            </p>
+                            <p className="text-[10px] text-gray-500">Permitir subir e anexar novos arquivos PDF às NFs</p>
+                          </div>
+                          <ToggleSwitch 
+                            checked={!!subPermsForm.followup_awb_anexar}
+                            onChange={() => handleToggleFormSubPerm('followup_awb_anexar')}
+                          />
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+
+              <div className="p-6 border-t border-gray-100 bg-slate-50 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setSelectedSubPermUser(null)}
+                  className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 bg-white rounded-lg hover:bg-gray-50 transition-colors font-semibold text-sm cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveSubPerms}
+                  disabled={savingId === selectedSubPermUser.id || savingId === selectedSubPermUser['ID']}
+                  className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold text-sm cursor-pointer flex items-center justify-center gap-2 animate-pulse-once"
+                >
+                  {savingId === selectedSubPermUser.id || savingId === selectedSubPermUser['ID'] ? (
+                    <>
+                      <Loader2 className="animate-spin" size={16} />
+                      Salvando...
+                    </>
+                  ) : (
+                    <>
+                      <Save size={16} />
+                      Salvar Alterações
+                    </>
+                  )}
+                </button>
+              </div>
             </motion.div>
           </div>
         )}

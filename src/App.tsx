@@ -446,7 +446,7 @@ export default function App() {
       case 'disponivelCentral': return <DisponivelCentral />;
       case 'producao': return <Producao />;
       case 'programacaoPCP': return <ProgramacaoPCP setHeaderContent={setHeaderContent} />;
-      case 'followup': return <FollowUp isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} />;
+      case 'followup': return <FollowUp isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} currentUser={user} />;
       case 'chat': return <Chat />;
       case 'configuracao': return (
         <Configuracao 

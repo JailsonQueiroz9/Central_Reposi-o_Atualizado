@@ -22,7 +22,9 @@ import {
   Menu,
   Plane,
   UploadCloud,
-  FileText
+  FileText,
+  Eye,
+  Printer
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { api } from '@/lib/api';
@@ -57,6 +59,7 @@ interface GroupedBrandResult {
 interface FollowUpProps {
   isSidebarOpen?: boolean;
   setIsSidebarOpen?: React.Dispatch<React.SetStateAction<boolean>>;
+  currentUser?: any;
 }
 
 function parseDate(dateStr: any): Date | null {
@@ -104,7 +107,60 @@ function formatSubtractedDate(dateStr: any, days: number): string {
   return d.toLocaleDateString('pt-BR');
 }
 
-export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen }: FollowUpProps) {
+export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, currentUser }: FollowUpProps) {
+  // Obter permissões do usuário logado (via prop ou localStorage)
+  const userPermissions = useMemo(() => {
+    let loggedInUser = currentUser;
+    if (!loggedInUser) {
+      try {
+        const stored = localStorage.getItem('pcp_user');
+        if (stored) loggedInUser = JSON.parse(stored);
+      } catch (e) {
+        console.error('Erro ao ler usuário do localStorage em FollowUp:', e);
+      }
+    }
+
+    if (!loggedInUser) return null;
+
+    let perms = loggedInUser['Permissões de Tela (Módulos)'] || loggedInUser.permissions;
+    let parsed: any = {};
+    
+    if (typeof perms === 'string' && perms.trim()) {
+      try {
+        parsed = JSON.parse(perms);
+      } catch (e) {
+        console.error('Erro ao parsear permissões em FollowUp:', e);
+      }
+    } else if (perms && typeof perms === 'object') {
+      parsed = perms;
+    }
+
+    const role = loggedInUser.role || loggedInUser['PAPEL'] || 'User';
+    const isAdmin = role === 'Admin';
+
+    return {
+      solicitacoes: parsed.followup_solicitacoes !== false,
+      materias: parsed.followup_materias !== false,
+      awb: parsed.followup_awb !== false,
+      awb_novo: parsed.followup_awb_novo !== false,
+      awb_acoes: parsed.followup_awb_acoes !== false,
+      awb_anexar: parsed.followup_awb_anexar !== false,
+      isAdmin
+    };
+  }, [currentUser]);
+
+  const perms = useMemo(() => {
+    return userPermissions || {
+      solicitacoes: true,
+      materias: true,
+      awb: true,
+      awb_novo: true,
+      awb_acoes: true,
+      awb_anexar: true,
+      isAdmin: false
+    };
+  }, [userPermissions]);
+
   const [isInnerSidebarOpen, setIsInnerSidebarOpen] = useState(true);
   const [orders, setOrders] = useState<FollowUpOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -124,6 +180,31 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen }: Fol
 
   // Tab de Navegação Interna ("Follow-up de Solicitações" ou "Matéria-Prima" ou "Follow-Up AWB")
   const [activeTab, setActiveTab] = useState<'solicitacoes' | 'materias' | 'awb'>('solicitacoes');
+
+  // Redirecionamento automático de aba baseada nas permissões
+  useEffect(() => {
+    if (userPermissions) {
+      if (activeTab === 'solicitacoes' && !userPermissions.solicitacoes) {
+        if (userPermissions.materias) {
+          setActiveTab('materias');
+        } else if (userPermissions.awb) {
+          setActiveTab('awb');
+        }
+      } else if (activeTab === 'materias' && !userPermissions.materias) {
+        if (userPermissions.solicitacoes) {
+          setActiveTab('solicitacoes');
+        } else if (userPermissions.awb) {
+          setActiveTab('awb');
+        }
+      } else if (activeTab === 'awb' && !userPermissions.awb) {
+        if (userPermissions.solicitacoes) {
+          setActiveTab('solicitacoes');
+        } else if (userPermissions.materias) {
+          setActiveTab('materias');
+        }
+      }
+    }
+  }, [userPermissions, activeTab]);
 
   // --- SUB-TELA MATÉRIA-PRIMA STATES ---
   const [materias, setMateriaisList] = useState<any[]>([]);
@@ -185,6 +266,12 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen }: Fol
   const [selectedTrackingAwb, setSelectedTrackingAwb] = useState<any | null>(null);
   const [docsModalOpen, setDocsModalOpen] = useState(false);
   const [selectedDocsAwb, setSelectedDocsAwb] = useState<any | null>(null);
+  const [previewedDocName, setPreviewedDocName] = useState<string | null>(null);
+
+  const closeDocsModal = () => {
+    setDocsModalOpen(false);
+    setPreviewedDocName(null);
+  };
 
   const [uploadedFilesCache, setUploadedFilesCache] = useState<Record<string, string>>({});
   const [isDraggingPdf, setIsDraggingPdf] = useState(false);
@@ -262,8 +349,9 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen }: Fol
     Status: 'EM TRÂNSITO',
     Material: '',
     Observacao: '',
-    Rastreio: 'https://www.dhl.com/br-pt/home.html',
-    DocList: [] as string[]
+    Rastreio: 'https://www.latamcargo.com/pt/trackshipment?docNumber=&docPrefix=&soType=SO',
+    DocList: [] as string[],
+    Transportadora: 'LATAM'
   });
 
   const fetchAwbData = async () => {
@@ -273,9 +361,30 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen }: Fol
       if (Array.isArray(data)) {
         const normalized = data.map((item: any, idx: number) => {
           const id = item.id || item.ID || item.Awb || `awb-${idx}`;
+          let rastreio = item.Rastreio || '';
+          let transportadora = item.Transportadora;
+          
+          if (!transportadora) {
+            if (rastreio.includes('gollog')) {
+              transportadora = 'GOL';
+            } else if (rastreio.includes('azullogistica')) {
+              transportadora = 'AZUL';
+            } else {
+              transportadora = 'LATAM';
+            }
+          }
+
+          if (!rastreio || rastreio.includes('dhl.com')) {
+            if (transportadora === 'GOL') rastreio = 'https://servicos.gollog.com.br/app/site/tracking';
+            else if (transportadora === 'AZUL') rastreio = 'https://www.azullogistica.com.br/Rastreio';
+            else rastreio = 'https://www.latamcargo.com/pt/trackshipment?docNumber=&docPrefix=&soType=SO';
+          }
+
           return {
             ...item,
-            id: String(id)
+            id: String(id),
+            Rastreio: rastreio,
+            Transportadora: transportadora
           };
         });
         setAwbList(normalized);
@@ -351,14 +460,34 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen }: Fol
       Status: 'EM TRÂNSITO',
       Material: '',
       Observacao: '',
-      Rastreio: 'https://www.dhl.com/br-pt/home.html',
-      DocList: ['Invoice_' + Math.floor(Math.random() * 1000000) + '.pdf', 'Packing_List.pdf']
+      Rastreio: 'https://www.latamcargo.com/pt/trackshipment?docNumber=&docPrefix=&soType=SO',
+      DocList: ['Invoice_' + Math.floor(Math.random() * 1000000) + '.pdf', 'Packing_List.pdf'],
+      Transportadora: 'LATAM'
     });
     setIsAwbModalOpen(true);
   };
 
   const openEditAwbModal = (item: any) => {
     setEditingAwb(item);
+    
+    let defaultTransportadora = item.Transportadora;
+    if (!defaultTransportadora) {
+      if (item.Rastreio?.includes('gollog')) {
+        defaultTransportadora = 'GOL';
+      } else if (item.Rastreio?.includes('azullogistica')) {
+        defaultTransportadora = 'AZUL';
+      } else {
+        defaultTransportadora = 'LATAM';
+      }
+    }
+
+    let resolvedRastreio = item.Rastreio;
+    if (!resolvedRastreio || resolvedRastreio.includes('dhl.com')) {
+      if (defaultTransportadora === 'GOL') resolvedRastreio = 'https://servicos.gollog.com.br/app/site/tracking';
+      else if (defaultTransportadora === 'AZUL') resolvedRastreio = 'https://www.azullogistica.com.br/Rastreio';
+      else resolvedRastreio = 'https://www.latamcargo.com/pt/trackshipment?docNumber=&docPrefix=&soType=SO';
+    }
+
     setAwbForm({
       Marca: item.Marca || 'UMBRO',
       Fornecedor: item.Fornecedor || '',
@@ -368,8 +497,9 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen }: Fol
       Status: item.Status || 'EM TRÂNSITO',
       Material: item.Material || '',
       Observacao: item.Observacao || '',
-      Rastreio: item.Rastreio || 'https://www.dhl.com/br-pt/home.html',
-      DocList: Array.isArray(item.DocList) ? item.DocList : ['Invoice_Anexo.pdf']
+      Rastreio: resolvedRastreio,
+      DocList: Array.isArray(item.DocList) ? item.DocList : ['Invoice_Anexo.pdf'],
+      Transportadora: defaultTransportadora
     });
     setIsAwbModalOpen(true);
   };
@@ -964,41 +1094,47 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen }: Fol
             </button>
           </div>
           <div className="p-4 flex-1 space-y-2">
-            <button
-              onClick={() => setActiveTab('solicitacoes')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all cursor-pointer ${
-                activeTab === 'solicitacoes'
-                  ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/10'
-                  : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Activity size={18} />
-              <span>Follow-up Solicitações</span>
-            </button>
+            {perms.solicitacoes && (
+              <button
+                onClick={() => setActiveTab('solicitacoes')}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all cursor-pointer ${
+                  activeTab === 'solicitacoes'
+                    ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/10'
+                    : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Activity size={18} />
+                <span>Follow-up Solicitações</span>
+              </button>
+            )}
             
-            <button
-              onClick={() => setActiveTab('materias')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all cursor-pointer ${
-                activeTab === 'materias'
-                  ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/10'
-                  : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Box size={18} />
-              <span>Matéria-Prima</span>
-            </button>
+            {perms.materias && (
+              <button
+                onClick={() => setActiveTab('materias')}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all cursor-pointer ${
+                  activeTab === 'materias'
+                    ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/10'
+                    : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Box size={18} />
+                <span>Matéria-Prima</span>
+              </button>
+            )}
 
-            <button
-              onClick={() => setActiveTab('awb')}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all cursor-pointer ${
-                activeTab === 'awb'
-                  ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/10'
-                  : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Plane size={18} />
-              <span>Follow - Up AWB</span>
-            </button>
+            {perms.awb && (
+              <button
+                onClick={() => setActiveTab('awb')}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all cursor-pointer ${
+                  activeTab === 'awb'
+                    ? 'bg-orange-600 text-white shadow-lg shadow-orange-600/10'
+                    : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Plane size={18} />
+                <span>Follow - Up AWB</span>
+              </button>
+            )}
           </div>
           
           <div className="p-4 border-t border-slate-800 text-xs text-slate-500 flex flex-col gap-1">
@@ -1016,30 +1152,36 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen }: Fol
 
       {/* Mobile Top bar for switching screens */}
       <div className="md:hidden border-b border-gray-200 bg-white p-3 gap-2 sticky top-0 z-30 w-full print:hidden flex shrink-0">
-        <button
-          onClick={() => setActiveTab('solicitacoes')}
-          className={`flex-1 text-center py-2 rounded-lg text-xs font-semibold cursor-pointer ${
-            activeTab === 'solicitacoes' ? 'bg-orange-600 text-white shadow' : 'bg-gray-100 text-gray-500'
-          }`}
-        >
-          Solicitações
-        </button>
-        <button
-          onClick={() => setActiveTab('materias')}
-          className={`flex-1 text-center py-2 rounded-lg text-xs font-semibold cursor-pointer ${
-            activeTab === 'materias' ? 'bg-orange-600 text-white shadow' : 'bg-gray-100 text-gray-500'
-          }`}
-        >
-          Matéria-Prima
-        </button>
-        <button
-          onClick={() => setActiveTab('awb')}
-          className={`flex-1 text-center py-2 rounded-lg text-xs font-semibold cursor-pointer ${
-            activeTab === 'awb' ? 'bg-orange-600 text-white shadow' : 'bg-gray-100 text-gray-500'
-          }`}
-        >
-          Follow-Up AWB
-        </button>
+        {perms.solicitacoes && (
+          <button
+            onClick={() => setActiveTab('solicitacoes')}
+            className={`flex-1 text-center py-2 rounded-lg text-xs font-semibold cursor-pointer ${
+              activeTab === 'solicitacoes' ? 'bg-orange-600 text-white shadow' : 'bg-gray-100 text-gray-500'
+            }`}
+          >
+            Solicitações
+          </button>
+        )}
+        {perms.materias && (
+          <button
+            onClick={() => setActiveTab('materias')}
+            className={`flex-1 text-center py-2 rounded-lg text-xs font-semibold cursor-pointer ${
+              activeTab === 'materias' ? 'bg-orange-600 text-white shadow' : 'bg-gray-100 text-gray-500'
+            }`}
+          >
+            Matéria-Prima
+          </button>
+        )}
+        {perms.awb && (
+          <button
+            onClick={() => setActiveTab('awb')}
+            className={`flex-1 text-center py-2 rounded-lg text-xs font-semibold cursor-pointer ${
+              activeTab === 'awb' ? 'bg-orange-600 text-white shadow' : 'bg-gray-100 text-gray-500'
+            }`}
+          >
+            Follow-Up AWB
+          </button>
+        )}
       </div>
 
       {/* Main Screen Panel with active sub-view */}
@@ -1668,13 +1810,15 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen }: Fol
             <FileDown size={18} />
             Exportar PDF
           </button>
-          <button
-            onClick={openNewAwbModal}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-sm text-sm font-bold cursor-pointer hover:scale-[1.02] active:scale-95"
-          >
-            <Plus size={18} />
-            Novo Embarque
-          </button>
+          {perms.awb_novo && (
+            <button
+              onClick={openNewAwbModal}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-sm text-sm font-bold cursor-pointer hover:scale-[1.02] active:scale-95"
+            >
+              <Plus size={18} />
+              Novo Embarque
+            </button>
+          )}
         </div>
       </div>
 
@@ -1768,13 +1912,13 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen }: Fol
                 <th className="p-4 font-semibold whitespace-nowrap text-center">Painel Rastreio</th>
                 <th className="p-4 font-semibold whitespace-nowrap">Material</th>
                 <th className="p-4 font-semibold whitespace-nowrap">Docs</th>
-                <th className="p-4 font-semibold whitespace-nowrap text-center">Ações</th>
+                {perms.awb_acoes && <th className="p-4 font-semibold whitespace-nowrap text-center">Ações</th>}
               </tr>
             </thead>
             <tbody>
               {loadingAwb ? (
                 <tr>
-                  <td colSpan={10} className="p-12 text-center text-gray-400">
+                  <td colSpan={perms.awb_acoes ? 10 : 9} className="p-12 text-center text-gray-400">
                     <Loader2 className="animate-spin inline-block mr-2 text-blue-500 w-6 h-6" />
                     Buscando dados de rastreamento...
                   </td>
@@ -1792,7 +1936,7 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen }: Fol
                 return matchSearch && matchStatus;
               }).length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="p-12 text-center text-gray-400 font-semibold text-sm">
+                  <td colSpan={perms.awb_acoes ? 10 : 9} className="p-12 text-center text-gray-400 font-semibold text-sm">
                     <Inbox className="mx-auto mb-2 text-gray-300" size={32} />
                     Nenhum embarque AWB correspondente encontrado.
                   </td>
@@ -1889,24 +2033,26 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen }: Fol
                           <span className="text-xs">{Array.isArray(item.DocList) ? item.DocList.length : 1}</span>
                         </button>
                       </td>
-                      <td className="p-4 text-center">
-                        <div className="flex justify-center gap-1.5">
-                          <button
-                            onClick={() => openEditAwbModal(item)}
-                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors cursor-pointer"
-                            title="Editar Embarque"
-                          >
-                            <Edit2 size={16} />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteAwb(item.id)}
-                            className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer"
-                            title="Remover"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
-                      </td>
+                      {perms.awb_acoes && (
+                        <td className="p-4 text-center">
+                          <div className="flex justify-center gap-1.5">
+                            <button
+                              onClick={() => openEditAwbModal(item)}
+                              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors cursor-pointer"
+                              title="Editar Embarque"
+                            >
+                              <Edit2 size={16} />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteAwb(item.id)}
+                              className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer"
+                              title="Remover"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   );
                 })
@@ -1994,14 +2140,29 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen }: Fol
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">NFs Vinculadas</label>
-                    <input
-                      type="text"
-                      placeholder="Ex: 89745, 89746"
-                      value={awbForm.NFs}
-                      onChange={(e) => setAwbForm({ ...awbForm, NFs: e.target.value })}
-                      className="w-full bg-white text-slate-900 border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 font-medium placeholder-slate-400"
-                    />
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Transportadora</label>
+                    <select
+                      value={awbForm.Transportadora || 'LATAM'}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        let trackingUrl = 'https://www.latamcargo.com/pt/trackshipment?docNumber=&docPrefix=&soType=SO';
+                        if (val === 'GOL') {
+                          trackingUrl = 'https://servicos.gollog.com.br/app/site/tracking';
+                        } else if (val === 'AZUL') {
+                          trackingUrl = 'https://www.azullogistica.com.br/Rastreio';
+                        }
+                        setAwbForm({ 
+                          ...awbForm, 
+                          Transportadora: val,
+                          Rastreio: trackingUrl 
+                        });
+                      }}
+                      className="w-full bg-white text-slate-900 border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer font-semibold"
+                    >
+                      <option value="LATAM">LATAM CARGO</option>
+                      <option value="GOL">GOLLOG (GOL)</option>
+                      <option value="AZUL">AZUL LOGÍSTICA</option>
+                    </select>
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase mb-1">AWB / Air Waybill</label>
@@ -2016,15 +2177,27 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen }: Fol
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Descrição do Material</label>
-                  <input
-                    type="text"
-                    placeholder="Ex: Palmilhas termomoldadas e solados Asics"
-                    value={awbForm.Material}
-                    onChange={(e) => setAwbForm({ ...awbForm, Material: e.target.value })}
-                    className="w-full bg-white text-slate-900 border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 font-medium placeholder-slate-400"
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">NFs Vinculadas</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: 89745, 89746"
+                      value={awbForm.NFs}
+                      onChange={(e) => setAwbForm({ ...awbForm, NFs: e.target.value })}
+                      className="w-full bg-white text-slate-900 border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 font-medium placeholder-slate-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Descrição do Material</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: Palmilhas termomoldadas e solados Asics"
+                      value={awbForm.Material}
+                      onChange={(e) => setAwbForm({ ...awbForm, Material: e.target.value })}
+                      className="w-full bg-white text-slate-900 border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 font-medium placeholder-slate-400"
+                    />
+                  </div>
                 </div>
 
                 <div>
@@ -2250,7 +2423,7 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen }: Fol
 
               <div className="bg-gray-50 p-4 border-t border-gray-200 flex justify-end gap-2">
                 <a
-                  href={selectedTrackingAwb.Rastreio || 'https://www.dhl.com/br-pt/home.html'}
+                  href={selectedTrackingAwb.Rastreio || 'https://www.latamcargo.com/pt/trackshipment?docNumber=&docPrefix=&soType=SO'}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5"
@@ -2278,9 +2451,11 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen }: Fol
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-xl shadow-2xl border border-gray-200 max-w-md w-full overflow-hidden"
+              className={`bg-white rounded-xl shadow-2xl border border-gray-200 w-full overflow-hidden transition-all duration-300 ${
+                previewedDocName ? 'max-w-6xl' : 'max-w-md'
+              }`}
             >
-              <div className="bg-slate-900 px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div className="bg-slate-900 px-6 py-4 border-b border-slate-800 flex items-center justify-between">
                 <div>
                   <h3 className="text-lg font-bold text-white flex items-center gap-2">
                     <FileDown className="text-blue-500" />
@@ -2289,83 +2464,550 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen }: Fol
                   <p className="text-xs text-slate-400 font-mono mt-0.5">AWB: {selectedDocsAwb.Awb}</p>
                 </div>
                 <button
-                  onClick={() => setDocsModalOpen(false)}
+                  onClick={closeDocsModal}
                   className="text-slate-400 hover:text-white transition-colors cursor-pointer"
                 >
                   <X size={18} />
                 </button>
               </div>
 
-              <div className="p-6 space-y-4">
-                <div className="space-y-2">
-                  <span className="text-xs font-bold text-slate-500 uppercase block">Anexos Vinculados ({Array.isArray(selectedDocsAwb.DocList) ? selectedDocsAwb.DocList.length : 1})</span>
-                  <div className="space-y-1.5 max-h-[250px] overflow-y-auto custom-scrollbar">
-                    {(() => {
-                      const docs = Array.isArray(selectedDocsAwb.DocList) ? selectedDocsAwb.DocList : ['Invoice_Carga_Dass_Aerea.pdf', 'Packing_List_Aereo_UMBRO.pdf'];
-                      return docs.map((docName: string, idx: number) => (
-                        <div key={idx} className="flex justify-between items-center bg-slate-50 border border-gray-200 rounded-lg p-3">
-                          <div className="flex items-center gap-2 overflow-hidden mr-2">
-                            <FileText size={16} className="text-blue-600 shrink-0" />
-                            <span className="text-xs font-semibold text-slate-800 truncate" title={docName}>{docName}</span>
-                          </div>
-                          <button
-                            onClick={() => downloadDocument(docName, selectedDocsAwb)}
-                            className="text-blue-600 hover:text-blue-500 text-xs font-bold hover:underline shrink-0 flex items-center gap-1 cursor-pointer"
-                          >
-                            Download
-                          </button>
+              <div className="grid grid-cols-1 md:grid-cols-12 divide-y md:divide-y-0 md:divide-x divide-gray-200">
+                {/* Painel Esquerdo: Lista de Documentos e Upload */}
+                <div className={`${previewedDocName ? 'md:col-span-5' : 'md:col-span-12'} p-6 space-y-4 flex flex-col justify-between`}>
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <span className="text-xs font-bold text-slate-500 uppercase block">Anexos Vinculados ({Array.isArray(selectedDocsAwb.DocList) ? selectedDocsAwb.DocList.length : 1})</span>
+                      <div className="space-y-1.5 max-h-[250px] overflow-y-auto custom-scrollbar">
+                        {(() => {
+                          const docs = Array.isArray(selectedDocsAwb.DocList) ? selectedDocsAwb.DocList : ['Invoice_Carga_Dass_Aerea.pdf', 'Packing_List_Aereo_UMBRO.pdf'];
+                          return docs.map((docName: string, idx: number) => (
+                            <div 
+                              key={idx} 
+                              className={`flex justify-between items-center border rounded-lg p-3 transition-colors ${
+                                previewedDocName === docName 
+                                  ? 'bg-blue-50/50 border-blue-300 shadow-xs' 
+                                  : 'bg-slate-50 border-gray-200 hover:bg-slate-100/55'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 overflow-hidden mr-2">
+                                <FileText size={16} className="text-blue-600 shrink-0" />
+                                <span className="text-xs font-semibold text-slate-800 truncate" title={docName}>{docName}</span>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <button
+                                  onClick={() => setPreviewedDocName(docName)}
+                                  className="text-emerald-600 hover:text-emerald-700 text-xs font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                                >
+                                  <Eye size={13} />
+                                  Visualizar
+                                </button>
+                                <span className="text-slate-300 text-[10px]">|</span>
+                                <button
+                                  onClick={() => downloadDocument(docName, selectedDocsAwb)}
+                                  className="text-blue-600 hover:text-blue-500 text-xs font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                                >
+                                  Download
+                                </button>
+                              </div>
+                            </div>
+                          ));
+                        })()}
+                      </div>
+                    </div>
+
+                    {perms.awb_anexar && (
+                      <div className="pt-4 border-t border-gray-200 space-y-2">
+                        <span className="text-xs font-bold text-slate-500 uppercase block">Anexar Novo Documento (PDF)</span>
+                        
+                        {/* Drag and Drop Zone */}
+                        <div
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            setIsDraggingPdf(true);
+                          }}
+                          onDragLeave={() => setIsDraggingPdf(false)}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            setIsDraggingPdf(false);
+                            handlePdfUpload(e.dataTransfer.files, false);
+                          }}
+                          className={`border-2 border-dashed rounded-lg p-4 text-center transition-all ${
+                            isDraggingPdf 
+                              ? 'border-blue-500 bg-blue-50/50 scale-[0.98]' 
+                              : 'border-slate-300 bg-slate-50/50 hover:bg-slate-50 hover:border-slate-400'
+                          }`}
+                        >
+                          <label className="cursor-pointer flex flex-col items-center justify-center gap-1">
+                            <UploadCloud className={`w-7 h-7 ${isDraggingPdf ? 'text-blue-500 animate-bounce' : 'text-slate-400'}`} />
+                            <span className="text-xs font-semibold text-slate-700">
+                              {isDraggingPdf ? 'Solte seus PDFs aqui!' : 'Arraste ou clique para anexar PDF'}
+                            </span>
+                            <span className="text-[10px] text-slate-400">O arquivo será anexado a este embarque</span>
+                            <input
+                              type="file"
+                              accept="application/pdf"
+                              multiple
+                              className="hidden"
+                              onChange={(e) => handlePdfUpload(e.target.files, false)}
+                            />
+                          </label>
                         </div>
-                      ));
-                    })()}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="pt-4 mt-4 border-t border-gray-100 flex justify-end">
+                    <button
+                      onClick={closeDocsModal}
+                      className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors cursor-pointer"
+                    >
+                      Fechar
+                    </button>
                   </div>
                 </div>
 
-                <div className="pt-4 border-t border-gray-200 space-y-2">
-                  <span className="text-xs font-bold text-slate-500 uppercase block">Anexar Novo Documento (PDF)</span>
-                  
-                  {/* Drag and Drop Zone */}
-                  <div
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      setIsDraggingPdf(true);
-                    }}
-                    onDragLeave={() => setIsDraggingPdf(false)}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      setIsDraggingPdf(false);
-                      handlePdfUpload(e.dataTransfer.files, false);
-                    }}
-                    className={`border-2 border-dashed rounded-lg p-4 text-center transition-all ${
-                      isDraggingPdf 
-                        ? 'border-blue-500 bg-blue-50/50 scale-[0.98]' 
-                        : 'border-slate-300 bg-slate-50/50 hover:bg-slate-50 hover:border-slate-400'
-                    }`}
-                  >
-                    <label className="cursor-pointer flex flex-col items-center justify-center gap-1">
-                      <UploadCloud className={`w-7 h-7 ${isDraggingPdf ? 'text-blue-500 animate-bounce' : 'text-slate-400'}`} />
-                      <span className="text-xs font-semibold text-slate-700">
-                        {isDraggingPdf ? 'Solte seus PDFs aqui!' : 'Arraste ou clique para anexar PDF'}
+                {/* Painel Direito: Preview de DANFE */}
+                {previewedDocName && (
+                  <div className="md:col-span-7 bg-slate-100 flex flex-col h-[650px] overflow-hidden">
+                    {/* Header do Painel de Preview */}
+                    <div className="bg-slate-50 px-4 py-3 border-b border-gray-200 flex items-center justify-between shadow-xs">
+                      <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5 truncate">
+                        <Eye size={14} className="text-emerald-600 shrink-0" />
+                        Pré-visualização da Nota Fiscal Eletrônica (DANFE)
                       </span>
-                      <span className="text-[10px] text-slate-400">O arquivo será anexado a este embarque</span>
-                      <input
-                        type="file"
-                        accept="application/pdf"
-                        multiple
-                        className="hidden"
-                        onChange={(e) => handlePdfUpload(e.target.files, false)}
-                      />
-                    </label>
-                  </div>
-                </div>
-              </div>
+                      <div className="flex items-center gap-2.5">
+                        <button
+                          onClick={() => {
+                            const printContent = document.getElementById('danfe-preview-print-area')?.innerHTML;
+                            if (printContent) {
+                              const win = window.open('', '_blank');
+                              if (win) {
+                                win.document.write(`
+                                  <html>
+                                    <head>
+                                      <title>DANFE - ${previewedDocName}</title>
+                                      <script src="https://cdn.tailwindcss.com"></script>
+                                      <style>
+                                        @media print {
+                                          body { padding: 0; margin: 0; }
+                                          .no-print { display: none; }
+                                        }
+                                      </style>
+                                    </head>
+                                    <body class="bg-white p-4">
+                                      <div class="max-w-[800px] mx-auto text-[10px] text-black">
+                                        ${printContent}
+                                      </div>
+                                      <script>
+                                        window.onload = function() {
+                                          window.print();
+                                        };
+                                      </script>
+                                    </body>
+                                  </html>
+                                `);
+                                win.document.close();
+                              }
+                            }
+                          }}
+                          className="bg-white hover:bg-slate-50 text-slate-700 border border-gray-300 rounded px-2.5 py-1 text-xs font-bold transition-colors flex items-center gap-1 cursor-pointer"
+                          title="Imprimir DANFE"
+                        >
+                          <Printer size={13} />
+                          Imprimir
+                        </button>
+                        <button
+                          onClick={() => setPreviewedDocName(null)}
+                          className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    </div>
 
-              <div className="bg-gray-50 p-4 border-t border-gray-100 flex justify-end">
-                <button
-                  onClick={() => setDocsModalOpen(false)}
-                  className="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors cursor-pointer"
-                >
-                  Fechar
-                </button>
+                    {/* Área do Documento Scrollável */}
+                    <div className="flex-1 overflow-y-auto p-4 bg-slate-200/60 custom-scrollbar flex justify-center items-start">
+                      <div id="danfe-preview-print-area" className="bg-white shadow-xl p-5 border border-gray-300 w-full max-w-[650px] text-[9px] leading-tight text-slate-950 font-sans select-none my-1">
+                        {(() => {
+                          // Extrair dados da chave e número da NF a partir do nome do arquivo
+                          const digits = previewedDocName.replace(/\D/g, '');
+                          let key = '35260743631191000100550020011085991543574115';
+                          let nfNum = '1108599';
+                          if (digits.length >= 7) {
+                            if (digits.length >= 44) {
+                              key = digits.substring(0, 44);
+                              nfNum = digits.substring(25, 34).replace(/^0+/, '') || '1108599';
+                            } else {
+                              nfNum = digits.substring(0, 7);
+                            }
+                          }
+                          
+                          const brand = selectedDocsAwb.Marca || 'ASICS';
+                          const supplier = selectedDocsAwb.Fornecedor || 'BRANYL COM. IND. TEXTIL LTDA.';
+                          const formattedKey = key.replace(/(.{4})/g, '$1 ').trim();
+                          
+                          // Itens calculados dinamicamente
+                          const items = [
+                            {
+                              cod: 'L4T3150',
+                              desc: `TECIDO TINTO 100% POLIESTER AS6964 /T3 1,50M GR.212,00 g/m2 COD: 1419051. LOTE: 227335; ITEM DO PEDIDO: 1419051`,
+                              ncm: '54075210',
+                              cst: '000',
+                              cfop: '6101',
+                              unid: 'MT',
+                              qtd: '17,4000',
+                              unit: '38,25',
+                              total: '665,55'
+                            },
+                            {
+                              cod: 'L4T4150',
+                              desc: `TECIDO TINTO 100% POLIESTER AS6964 /T4 1,50M GR.212,00 g/m2 COD: 1419051. LOTE: 227335; ITEM DO PEDIDO: 1419051`,
+                              ncm: '54075210',
+                              cst: '000',
+                              cfop: '6101',
+                              unid: 'MT',
+                              qtd: '14,0000',
+                              unit: '38,25',
+                              total: '535,48'
+                            }
+                          ];
+
+                          return (
+                            <div className="space-y-2 text-black font-sans">
+                              {/* Recibo de Entrega */}
+                              <div className="border border-slate-950 p-1 flex justify-between gap-1">
+                                <div className="flex-1 text-[7.5px]">
+                                  <span>RECEBEMOS DE <strong>{supplier}</strong> OS PRODUTOS E/OU SERVIÇOS CONSTANTES DA NOTA FISCAL INDICADA AO LADO</span>
+                                  <div className="grid grid-cols-2 gap-2 mt-2 border-t border-slate-950 pt-1">
+                                    <div><strong>DATA DE RECEBIMENTO:</strong></div>
+                                    <div><strong>IDENTIFICAÇÃO E ASSINATURA DO RECEBEDOR:</strong></div>
+                                  </div>
+                                </div>
+                                <div className="w-[110px] border-l border-slate-950 pl-2 flex flex-col justify-center items-center text-center">
+                                  <span className="font-bold text-xs">NF-e</span>
+                                  <span className="font-bold text-[11px] text-blue-700">Nº {nfNum}</span>
+                                  <span className="text-[7px]">SÉRIE 2 - FL 1/1</span>
+                                </div>
+                              </div>
+
+                              {/* Cabeçalho Danfe Principal */}
+                              <div className="grid grid-cols-12 border border-slate-950 divide-x divide-slate-950">
+                                {/* Emitente */}
+                                <div className="col-span-5 p-1.5 flex flex-col justify-between">
+                                  <div>
+                                    <span className="font-extrabold text-[10px] block leading-none">{supplier}</span>
+                                    <span className="text-[6.5px] text-slate-800 uppercase block mt-1 leading-normal font-medium">
+                                      RUA FLAVIO GIACOMINI, SN - PIPEIRO<br />
+                                      CEP: 13363-160 - CAPIVARI - SP<br />
+                                      FONE: (19) 3492-8400
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* DANFE Info */}
+                                <div className="col-span-3 p-1 flex flex-col items-center justify-center text-center">
+                                  <span className="font-extrabold text-[11px]">DANFE</span>
+                                  <span className="text-[6px] leading-tight block mt-0.5">Documento Auxiliar da<br />Nota Fiscal Eletrônica</span>
+                                  <div className="grid grid-cols-2 border border-slate-950 text-[7px] w-full max-w-[80px] my-1 divide-x divide-slate-950">
+                                    <div className="p-0.5">0-Entrada<br />1-Saída</div>
+                                    <div className="p-0.5 font-bold flex items-center justify-center text-[10px]">1</div>
+                                  </div>
+                                  <span className="font-bold text-[10px] text-blue-700">Nº {nfNum}</span>
+                                  <span className="font-bold text-[7px]">SÉRIE 2</span>
+                                </div>
+
+                                {/* Chave de Acesso */}
+                                <div className="col-span-4 p-1.5 flex flex-col justify-between overflow-hidden">
+                                  {/* Barcode Simulado */}
+                                  <div className="flex h-6 w-full bg-white gap-[1px] items-stretch px-1 py-0.5 border border-gray-300">
+                                    {Array.from({ length: 44 }).map((_, i) => (
+                                      <div
+                                        key={i}
+                                        className="bg-black"
+                                        style={{
+                                          width: `${(i % 3 === 0 ? 2 : (i % 2 === 0 ? 1 : 1.5))}px`,
+                                        }}
+                                      />
+                                    ))}
+                                  </div>
+                                  <div className="mt-1">
+                                    <span className="text-[6px] font-bold block uppercase text-slate-500">CHAVE DE ACESSO</span>
+                                    <span className="font-mono font-bold text-[7.5px] break-all block tracking-tight leading-none text-slate-900">{formattedKey}</span>
+                                  </div>
+                                  <div className="border-t border-slate-950 pt-1 mt-1 text-[6.5px] text-slate-700 text-center font-medium leading-none">
+                                    Consulta no portal nacional da NF-e www.nfe.fazenda.gov.br
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Natureza da Operação / Protocolo */}
+                              <div className="grid grid-cols-12 border border-slate-950 divide-x divide-slate-950 text-[7px]">
+                                <div className="col-span-7 p-1">
+                                  <span className="text-[6px] text-slate-500 block uppercase">Natureza da Operação</span>
+                                  <span className="font-bold uppercase text-[7.5px]">VENDA DE MERCADORIA ADQUIRIDA OU RECEBIDA</span>
+                                </div>
+                                <div className="col-span-5 p-1">
+                                  <span className="text-[6px] text-slate-500 block uppercase">Protocolo de Autorização de Uso</span>
+                                  <span className="font-bold uppercase text-[7.5px]">135262735987044 - 09/07/2026 16:59:24</span>
+                                </div>
+                              </div>
+
+                              {/* Inscrições */}
+                              <div className="grid grid-cols-3 border border-slate-950 divide-x divide-slate-950 p-1 text-[7.5px]">
+                                <div>
+                                  <span className="text-[6px] text-slate-500 block uppercase">Inscrição Estadual</span>
+                                  <span className="font-bold">253010554119</span>
+                                </div>
+                                <div>
+                                  <span className="text-[6px] text-slate-500 block uppercase">Insc. Est. Subst. Trib.</span>
+                                  <span className="font-bold">-</span>
+                                </div>
+                                <div>
+                                  <span className="text-[6px] text-slate-500 block uppercase">CNPJ</span>
+                                  <span className="font-bold">43.631.191/0001-00</span>
+                                </div>
+                              </div>
+
+                              {/* Destinatário */}
+                              <div className="border border-slate-950">
+                                <div className="bg-slate-100 px-1.5 py-0.5 font-bold border-b border-slate-950 text-[6.5px] uppercase text-slate-700">Destinatário / Remetente</div>
+                                <div className="p-1 grid grid-cols-12 gap-1">
+                                  <div className="col-span-8">
+                                    <span className="text-[6px] text-slate-500 block">NOME / RAZÃO SOCIAL</span>
+                                    <span className="font-extrabold text-[8px]">DASS NORDESTE CALCADOS E ARTIGOS ESPORTIVOS LTDA</span>
+                                  </div>
+                                  <div className="col-span-4 border-l border-slate-950/20 pl-1.5">
+                                    <span className="text-[6px] text-slate-500 block">CNPJ / CPF</span>
+                                    <span className="font-bold text-[8px]">01.287.588/0005-00</span>
+                                  </div>
+                                </div>
+                                <div className="p-1 border-t border-slate-950 grid grid-cols-12 gap-1">
+                                  <div className="col-span-6">
+                                    <span className="text-[6px] text-slate-500 block">ENDEREÇO</span>
+                                    <span className="font-semibold">AV LUIS VIANA FILHO, SN - CENTRO</span>
+                                  </div>
+                                  <div className="col-span-3 border-l border-slate-950/20 pl-1.5">
+                                    <span className="text-[6px] text-slate-500 block">BAIRRO / DISTRITO</span>
+                                    <span className="font-semibold">CENTRO</span>
+                                  </div>
+                                  <div className="col-span-3 border-l border-slate-950/20 pl-1.5">
+                                    <span className="text-[6px] text-slate-500 block">CEP</span>
+                                    <span className="font-semibold">46880-000</span>
+                                  </div>
+                                </div>
+                                <div className="p-1 border-t border-slate-950 grid grid-cols-12 gap-1 text-[7.5px]">
+                                  <div className="col-span-5">
+                                    <span className="text-[6px] text-slate-500 block">MUNICÍPIO</span>
+                                    <span className="font-bold">ITABERABA</span>
+                                  </div>
+                                  <div className="col-span-1 border-l border-slate-950/20 pl-1">
+                                    <span className="text-[6px] text-slate-500 block">UF</span>
+                                    <span className="font-bold">BA</span>
+                                  </div>
+                                  <div className="col-span-3 border-l border-slate-950/20 pl-1.5">
+                                    <span className="text-[6px] text-slate-500 block">FONE / FAX</span>
+                                    <span className="font-semibold">(75) 3223-5162</span>
+                                  </div>
+                                  <div className="col-span-3 border-l border-slate-950/20 pl-1.5">
+                                    <span className="text-[6px] text-slate-500 block">INSCRIÇÃO ESTADUAL</span>
+                                    <span className="font-bold">064696094</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Fatura */}
+                              <div className="border border-slate-950">
+                                <div className="bg-slate-100 px-1.5 py-0.5 font-bold border-b border-slate-950 text-[6.5px] uppercase text-slate-700">Fatura / Duplicatas</div>
+                                <div className="p-1.5 flex gap-10">
+                                  <div>
+                                    <span className="text-[6px] text-slate-500 block">NÚMERO</span>
+                                    <span className="font-extrabold text-[7.5px]">001</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-[6px] text-slate-500 block">VENCIMENTO</span>
+                                    <span className="font-extrabold text-[7.5px] text-emerald-700">15/10/2026</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-[6px] text-slate-500 block">VALOR ORIGINAL</span>
+                                    <span className="font-extrabold text-[7.5px]">R$ 1.201,05</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Impostos */}
+                              <div className="border border-slate-950">
+                                <div className="bg-slate-100 px-1.5 py-0.5 font-bold border-b border-slate-950 text-[6.5px] uppercase text-slate-700">Cálculo do Imposto</div>
+                                <div className="grid grid-cols-5 divide-x divide-slate-950 border-b border-slate-950 p-1 text-center text-[7.5px]">
+                                  <div>
+                                    <span className="text-[5.5px] text-slate-500 block">BASE DE CÁLCULO DO ICMS</span>
+                                    <span className="font-bold">R$ 1.201,05</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-[5.5px] text-slate-500 block">VALOR DO ICMS</span>
+                                    <span className="font-bold">R$ 84,07</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-[5.5px] text-slate-500 block">BASE DE CÁLC. ICMS S.T.</span>
+                                    <span className="font-bold">R$ 0,00</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-[5.5px] text-slate-500 block">VALOR DO ICMS S.T.</span>
+                                    <span className="font-bold">R$ 0,00</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-[5.5px] text-slate-500 block">VALOR TOTAL DOS PRODUTOS</span>
+                                    <span className="font-bold">R$ 1.201,05</span>
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-5 divide-x divide-slate-950 p-1 text-center text-[7.5px]">
+                                  <div>
+                                    <span className="text-[5.5px] text-slate-500 block">VALOR DO FRETE</span>
+                                    <span className="font-bold">R$ 0,00</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-[5.5px] text-slate-500 block">VALOR DO SEGURO</span>
+                                    <span className="font-bold">R$ 0,00</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-[5.5px] text-slate-500 block">DESCONTO</span>
+                                    <span className="font-bold">R$ 0,00</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-[5.5px] text-slate-500 block">VALOR DO IPI</span>
+                                    <span className="font-bold">R$ 0,00</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-[5.5px] text-slate-500 block">VALOR TOTAL DA NOTA</span>
+                                    <span className="font-extrabold text-[8px] text-blue-800">R$ 1.201,05</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Transportador */}
+                              <div className="border border-slate-950">
+                                <div className="bg-slate-100 px-1.5 py-0.5 font-bold border-b border-slate-950 text-[6.5px] uppercase text-slate-700">Transportador / Volumes Transportados</div>
+                                <div className="p-1 grid grid-cols-12 gap-1 text-[7.5px]">
+                                  <div className="col-span-5">
+                                    <span className="text-[6px] text-slate-500 block">RAZÃO SOCIAL</span>
+                                    <span className="font-extrabold uppercase">{selectedDocsAwb.Transportadora || 'SK TRANSPORTE E LOGISTICA LTDA'}</span>
+                                  </div>
+                                  <div className="col-span-2 border-l border-slate-950/10 pl-1">
+                                    <span className="text-[6px] text-slate-500 block">FRETE POR CONTA</span>
+                                    <span className="font-semibold">0-Remetente</span>
+                                  </div>
+                                  <div className="col-span-2 border-l border-slate-950/10 pl-1">
+                                    <span className="text-[6px] text-slate-500 block">CÓDIGO ANTT</span>
+                                    <span className="font-semibold">-</span>
+                                  </div>
+                                  <div className="col-span-3 border-l border-slate-950/10 pl-1.5">
+                                    <span className="text-[6px] text-slate-500 block">CNPJ / CPF</span>
+                                    <span className="font-bold">39.283.025/0001-85</span>
+                                  </div>
+                                </div>
+                                <div className="p-1 border-t border-slate-950 grid grid-cols-12 gap-1 text-[7.5px]">
+                                  <div className="col-span-5">
+                                    <span className="text-[6px] text-slate-500 block">ENDEREÇO</span>
+                                    <span className="font-semibold">AV LUIS VIANA FILHO, SN</span>
+                                  </div>
+                                  <div className="col-span-3 border-l border-slate-950/10 pl-1.5">
+                                    <span className="text-[6px] text-slate-500 block">MUNICÍPIO</span>
+                                    <span className="font-bold">ITABERABA</span>
+                                  </div>
+                                  <div className="col-span-1 border-l border-slate-950/10 pl-1">
+                                    <span className="text-[6px] text-slate-500 block">UF</span>
+                                    <span className="font-bold">BA</span>
+                                  </div>
+                                  <div className="col-span-3 border-l border-slate-950/10 pl-1.5">
+                                    <span className="text-[6px] text-slate-500 block">INSCRIÇÃO ESTADUAL</span>
+                                    <span className="font-semibold">-</span>
+                                  </div>
+                                </div>
+                                <div className="p-1 border-t border-slate-950 grid grid-cols-5 gap-1 text-center text-[7.5px]">
+                                  <div>
+                                    <span className="text-[6px] text-slate-500 block">QUANTIDADE</span>
+                                    <span className="font-semibold">2</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-[6px] text-slate-500 block">ESPÉCIE</span>
+                                    <span className="font-semibold">VOLUMES</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-[6px] text-slate-500 block">MARCA</span>
+                                    <span className="font-semibold">{brand}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-[6px] text-slate-500 block">PESO BRUTO</span>
+                                    <span className="font-semibold">9,720 kg</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-[6px] text-slate-500 block">PESO LÍQUIDO</span>
+                                    <span className="font-semibold">9,720 kg</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Tabela de Itens */}
+                              <div className="border border-slate-950">
+                                <div className="bg-slate-100 px-1.5 py-0.5 font-bold border-b border-slate-950 text-[6.5px] uppercase text-slate-700">Dados dos Produtos / Serviços</div>
+                                <table className="w-full text-left text-[6.5px] border-collapse font-sans">
+                                  <thead>
+                                    <tr className="bg-slate-50 border-b border-slate-950 text-slate-800 font-bold uppercase">
+                                      <th className="p-1 border-r border-slate-950 w-[12%]">Código</th>
+                                      <th className="p-1 border-r border-slate-950 w-[48%]">Descrição dos Produtos / Serviços</th>
+                                      <th className="p-1 border-r border-slate-950 w-[8%]">NCM/SH</th>
+                                      <th className="p-1 border-r border-slate-950 w-[5%] text-center">CST</th>
+                                      <th className="p-1 border-r border-slate-950 w-[5%] text-center">CFOP</th>
+                                      <th className="p-1 border-r border-slate-950 w-[5%] text-center">UNID</th>
+                                      <th className="p-1 border-r border-slate-950 w-[6%] text-right">Qtd</th>
+                                      <th className="p-1 border-r border-slate-950 w-[6%] text-right">V.Unit</th>
+                                      <th className="p-1 text-right w-[5%]">V.Total</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-950/20 font-medium text-slate-900">
+                                    {items.map((it, idx) => (
+                                      <tr key={idx}>
+                                        <td className="p-1 border-r border-slate-950 font-mono text-[6px]">{it.cod}</td>
+                                        <td className="p-1 border-r border-slate-950 uppercase text-[5.8px] leading-tight font-sans">
+                                          {it.desc}
+                                        </td>
+                                        <td className="p-1 border-r border-slate-950 font-mono text-[6px]">{it.ncm}</td>
+                                        <td className="p-1 border-r border-slate-950 text-center font-mono">{it.cst}</td>
+                                        <td className="p-1 border-r border-slate-950 text-center font-mono">{it.cfop}</td>
+                                        <td className="p-1 border-r border-slate-950 text-center">{it.unid}</td>
+                                        <td className="p-1 border-r border-slate-950 text-right font-mono">{it.qtd}</td>
+                                        <td className="p-1 border-r border-slate-950 text-right font-mono">{it.unit}</td>
+                                        <td className="p-1 text-right font-mono font-bold">{it.total}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+
+                              {/* Informações Adicionais */}
+                              <div className="border border-slate-950 text-[6.5px]">
+                                <div className="bg-slate-100 px-1.5 py-0.5 font-bold border-b border-slate-950 text-[6.5px] uppercase text-slate-700">Dados Adicionais</div>
+                                <div className="p-1.5 grid grid-cols-12 gap-1">
+                                  <div className="col-span-8 pr-3 text-slate-800 leading-normal font-medium">
+                                    <span className="text-[6px] text-slate-500 block uppercase font-bold mb-0.5">Informações Complementares</span>
+                                    <p className="whitespace-pre-line text-[6px]">
+                                      ALIQUOTA DO IPI REDUZIDA A ZERO CONF. DEC. LEI 1686/79 COMPRADOR: REGIS.<br />
+                                      Entrega: AV LUIS VIANA FILHO, SN - ITABERABA - BA. Pedido(s): 208137/OC:15684603.<br />
+                                      Havendo atraso no pagto da(s) duplicata(s) correspondente(s) a esta N.F. incidiraao juros de 1% ao mes ou fracao e multa de 2% apos o vencimento. ATENCAO: Caso nao receba o boleto ate 02 dias do vencimento, ligar para Dep. Cobranca.
+                                    </p>
+                                  </div>
+                                  <div className="col-span-4 border-l border-slate-950/20 pl-2 flex flex-col justify-between">
+                                    <span className="text-[6px] text-slate-500 block uppercase font-bold">RESERVADO AO FISCO</span>
+                                    <div className="h-6"></div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </motion.div>
           </div>
