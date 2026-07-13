@@ -329,7 +329,6 @@ export default function App() {
   const filteredMenuItems = useMemo(() => {
     if (!permissions) return [];
     return menuItems.filter(item => {
-      if (item.id === 'configuracao') return true;
       if (item.perm === 'producao' || item.perm === 'programacaoPCP') {
         return (permissions as any)[item.perm] !== false;
       }
@@ -399,7 +398,7 @@ export default function App() {
           </div>
         </div>
         <div className="flex flex-col items-center gap-1">
-          <p className="text-white font-bold text-lg tracking-widest">CONTROLE DE REP</p>
+          <p className="text-white font-bold text-lg tracking-widest">PCP</p>
           <p className="text-gray-400 font-medium animate-pulse text-sm">Sincronizando ambiente e permissões...</p>
         </div>
       </div>
@@ -487,9 +486,12 @@ export default function App() {
         transition={{ duration: 0.3, ease: 'easeInOut' }}
         className="fixed md:relative z-50 h-full bg-slate-900 border-r border-slate-800 text-white flex flex-col shadow-2xl overflow-hidden whitespace-nowrap print:hidden"
       >
-        <div className="p-4 flex items-center justify-between border-b border-slate-800">
-          <h2 className="text-xl font-bold tracking-wider">CONTROLE DE REP</h2>
-          <button onClick={() => setIsSidebarOpen(false)} className="md:hidden p-1 hover:bg-slate-800 rounded">
+        <div className="p-4 flex items-center justify-center border-b border-slate-800 relative">
+          <h2 className="text-xl font-bold tracking-wider text-center">PCP</h2>
+          <button 
+            onClick={() => setIsSidebarOpen(false)} 
+            className="absolute right-4 top-1/2 -translate-y-1/2 md:hidden p-1 hover:bg-slate-800 rounded"
+          >
             <X size={20} />
           </button>
         </div>
