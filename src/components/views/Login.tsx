@@ -238,16 +238,6 @@ export default function Login({
                   )}
                 </button>
               </form>
-
-              {/* Redirect to Register link */}
-              <div className="mt-8 text-center pt-6 border-t border-slate-800/50">
-                <button 
-                  onClick={onGoToRegister} 
-                  className="text-sm font-medium text-slate-400 hover:text-white transition-colors cursor-pointer"
-                >
-                  Não tem conta? <span className="text-blue-400 underline decoration-dashed hover:text-blue-300">Criar uma</span>
-                </button>
-              </div>
             </div>
           </div>
         </motion.div>

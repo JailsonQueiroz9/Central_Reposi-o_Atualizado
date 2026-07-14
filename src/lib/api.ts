@@ -5,7 +5,7 @@ export const api = {
    * @param data Dados a serem enviados para a ação (opcional)
    */
   post: async (action: string, data: any = {}) => {
-    const url = import.meta.env.VITE_API_URL || import.meta.env.VITE_APPS_SCRIPT_URL || "https://script.google.com/macros/s/AKfycbyuX8i5Bhsz6YaK_nDCntXT93pfd62BE6BL8Cpd_u6AlKfk_MOA6GWF6vvQIU92FeLiNw/exec";
+    const url = import.meta.env.VITE_API_URL || import.meta.env.VITE_APPS_SCRIPT_URL || "https://script.google.com/macros/s/AKfycbzGmeToX15icm5G7JvXSqSuK_nuoJbvllTvceLs2RIkdd5Au3PLMivp-UiTR44scqJ9PA/exec";
     
     const isInvalidUrl = !url || url.includes('TODO') || url.includes('YOUR_') || url.trim() === '';
 
@@ -278,246 +278,286 @@ function mockResponse(action: string, data: any) {
             'Descrição': 'Descrição mockada para ' + data.produto
           });
           break;
-        case 'getMateriasData':
-          resolve([
-            { 
-              id: 'm1',
-              'Id': 'a15298cd-4870-496a-8d07-2c9ffbc4a9d7',
-              'Produto': '101484', 
-              'Descrição produto': 'TECIDO KETTEN K817/2 3 1098 JERSEY CRU 99 A004 FIX NK LARG 1,48M 44,6GR/M2 100%PES', 
-              'Tamanho': '0',
-              'Semana': '2025/29',
-              'Modelo': 'BREEZE',
-              'Legenda': 'ESTOQUE',
-              'Documento': 'FIL001441',
-              'OP': '15669806',
-              'Reserva': '108.24',
-              'Qtd. estoque': '0.00',
-              'Saldo': '32150.11',
-              'Qtd. OC': '0',
-              'Qtd. EDI': '0',
-              'Nome fornecedor': 'TWILTEX INDUSTRIAS TEXTEIS LTD',
-              'Und.': 'M2'
-            },
-            { 
-              id: 'm2',
-              'Id': 'a15298cd-4870-496a-8d07-2c9ffbc4a9d8',
-              'Produto': '101484', 
-              'Descrição produto': 'TECIDO KETTEN K817/2 3 1098 JERSEY CRU 99 A004 FIX NK LARG 1,48M 44,6GR/M2 100%PES', 
-              'Tamanho': '0',
-              'Semana': '2025/29',
-              'Modelo': 'RISE UP',
-              'Legenda': 'ESTOQUE',
-              'Documento': 'BRITB005144',
-              'OP': '15669828',
-              'Reserva': '108.91',
-              'Qtd. estoque': '0.00',
-              'Saldo': '31919.65',
-              'Qtd. OC': '0',
-              'Qtd. EDI': '0',
-              'Nome fornecedor': 'TWILTEX INDUSTRIAS TEXTEIS LTD',
-              'Und.': 'M2'
-            },
-            { 
-              id: 'm3',
-              'Id': 'a15298cd-4870-496a-8d07-2c9ffbc4a9d9',
-              'Produto': '101484', 
-              'Descrição produto': 'TECIDO KETTEN K817/2 3 1098 JERSEY CRU 99 A004 FIX NK LARG 1,48M 44,6GR/M2 100%PES', 
-              'Tamanho': '0',
-              'Semana': '2025/29',
-              'Modelo': 'RISE UP',
-              'Legenda': 'ESTOQUE',
-              'Documento': 'BRITB005145',
-              'OP': '15568939',
-              'Reserva': '98.66',
-              'Qtd. estoque': '0.00',
-              'Saldo': '31820.98',
-              'Qtd. OC': '0',
-              'Qtd. EDI': '0',
-              'Nome fornecedor': 'TWILTEX INDUSTRIAS TEXTEIS LTD',
-              'Und.': 'M2'
-            },
-            { 
-              id: 'm4',
-              'Id': 'a15298cd-4870-496a-8d07-2c9ffbc4a9e0',
-              'Produto': '101484', 
-              'Descrição produto': 'TECIDO KETTEN K817/2 3 1098 JERSEY CRU 99 A004 FIX NK LARG 1,48M 44,6GR/M2 100%PES', 
-              'Tamanho': '0',
-              'Semana': '2025/29',
-              'Modelo': 'RISE UP',
-              'Legenda': 'ESTOQUE',
-              'Documento': 'BRITB005146',
-              'OP': '15568950',
-              'Reserva': '87.29',
-              'Qtd. estoque': '0.00',
-              'Saldo': '31733.68',
-              'Qtd. OC': '0',
-              'Qtd. EDI': '0',
-              'Nome fornecedor': 'TWILTEX INDUSTRIAS TEXTEIS LTD',
-              'Und.': 'M2'
-            },
-            { 
-              id: 'm5',
-              'Id': 'a15298cd-4870-496a-8d07-2c9ffbc4a9e1',
-              'Produto': '101484', 
-              'Descrição produto': 'TECIDO KETTEN K817/2 3 1098 JERSEY CRU 99 A004 FIX NK LARG 1,48M 44,6GR/M2 100%PES', 
-              'Tamanho': '0',
-              'Semana': '2025/30',
-              'Modelo': 'PRIZE',
-              'Legenda': 'ESTOQUE',
-              'Documento': 'NET000067',
-              'OP': '15670120',
-              'Reserva': '45.52',
-              'Qtd. estoque': '0.00',
-              'Saldo': '31449.36',
-              'Qtd. OC': '0',
-              'Qtd. EDI': '0',
-              'Nome fornecedor': 'TWILTEX INDUSTRIAS TEXTEIS LTD',
-              'Und.': 'M2'
-            },
-            { 
-              id: 'm6',
-              'Id': 'a15298cd-4870-496a-8d07-2c9ffbc4a9e2',
-              'Produto': '101484', 
-              'Descrição produto': 'TECIDO KETTEN K817/2 3 1098 JERSEY CRU 99 A004 FIX NK LARG 1,48M 44,6GR/M2 100%PES', 
-              'Tamanho': '0',
-              'Semana': '2025/30',
-              'Modelo': 'PRIZE',
-              'Legenda': 'ESTOQUE',
-              'Documento': 'NET000073',
-              'OP': '15670121',
-              'Reserva': '26.10',
-              'Qtd. estoque': '0.00',
-              'Saldo': '31423.25',
-              'Qtd. OC': '0',
-              'Qtd. EDI': '0',
-              'Nome fornecedor': 'TWILTEX INDUSTRIAS TEXTEIS LTD',
-              'Und.': 'M2'
-            },
-            { 
-              id: 'm7',
-              'Id': 'a15298cd-4870-496a-8d07-2c9ffbc4a9e3',
-              'Produto': '101484', 
-              'Descrição produto': 'TECIDO KETTEN K817/2 3 1098 JERSEY CRU 99 A004 FIX NK LARG 1,48M 44,6GR/M2 100%PES', 
-              'Tamanho': '0',
-              'Semana': '2025/43',
-              'Modelo': 'AGILE',
-              'Legenda': 'FATURADO',
-              'Documento': 'FIL001003',
-              'OP': '14646362',
-              'Reserva': '30.15',
-              'Qtd. estoque': '0.00',
-              'Saldo': '0.00',
-              'Qtd. OC': '1554.00',
-              'Qtd. EDI': '433053',
-              'Nome fornecedor': 'TWILTEX INDUSTRIAS TEXTEIS LTD',
-              'Und.': 'M2'
-            },
-            { 
-              id: 'm8',
-              'Id': 'a15298cd-4870-496a-8d07-2c9ffbc4a9e4',
-              'Produto': '101484', 
-              'Descrição produto': 'TECIDO KETTEN K817/2 3 1098 JERSEY CRU 99 A004 FIX NK LARG 1,48M 44,6GR/M2 100%PES', 
-              'Tamanho': '0',
-              'Semana': '2025/43',
-              'Modelo': 'AGILE',
-              'Legenda': 'FATURADO',
-              'Documento': 'FIL001004',
-              'OP': '14646377',
-              'Reserva': '23.71',
-              'Qtd. estoque': '0.00',
-              'Saldo': '0.00',
-              'Qtd. OC': '1554.00',
-              'Qtd. EDI': '433053',
-              'Nome fornecedor': 'TWILTEX INDUSTRIAS TEXTEIS LTD',
-              'Und.': 'M2'
-            },
-            { 
-              id: 'm9',
-              'Id': 'a15298cd-4870-496a-8d07-2c9ffbc4a9e5',
-              'Produto': '101531', 
-              'Descrição produto': 'REFORCO ENTRETELA SOFTLINE M5C 13 PRETO LARG 1,45M 130GR/M2 80%PES REC. 20%PES', 
-              'Tamanho': '0',
-              'Semana': '2025/40',
-              'Modelo': 'VENTURE TRACER 2',
-              'Legenda': 'ESTOQUE',
-              'Documento': 'BRITB004133',
-              'OP': '14482899',
-              'Reserva': '157.72',
-              'Qtd. estoque': '0.00',
-              'Saldo': '8980.12',
-              'Qtd. OC': '0',
-              'Qtd. EDI': '0',
-              'Nome fornecedor': 'INBRAPE TECIDOS INDÚSTRIAIS LTDA',
-              'Und.': 'M2'
-            },
-            { 
-              id: 'm10',
-              'Id': 'a15298cd-4870-496a-8d07-2c9ffbc4a9e6',
-              'Produto': '101531', 
-              'Descrição produto': 'REFORCO ENTRETELA SOFTLINE M5C 13 PRETO LARG 1,45M 130GR/M2 80%PES REC. 20%PES', 
-              'Tamanho': '0',
-              'Semana': '2025/40',
-              'Modelo': 'FREESTYLE II',
-              'Legenda': 'ESTOQUE',
-              'Documento': 'BRITB003950',
-              'OP': '14480436',
-              'Reserva': '80.01',
-              'Qtd. estoque': '0.00',
-              'Saldo': '8665.03',
-              'Qtd. OC': '0',
-              'Qtd. EDI': '0',
-              'Nome fornecedor': 'INBRAPE TECIDOS INDÚSTRIAIS LTDA',
-              'Und.': 'M2'
-            },
-            { 
-              id: 'm11',
-              'Id': 'a15298cd-4870-496a-8d07-2c9ffbc4a9e7',
-              'Produto': '101531', 
-              'Descrição produto': 'REFORCO ENTRETELA SOFTLINE M5C 13 PRETO LARG 1,45M 130GR/M2 80%PES REC. 20%PES', 
-              'Tamanho': '0',
-              'Semana': '2025/43',
-              'Modelo': 'COMET 2',
-              'Legenda': 'FATURADO',
-              'Documento': 'BRITB003980',
-              'OP': '14481191',
-              'Reserva': '187.96',
-              'Qtd. estoque': '0.00',
-              'Saldo': '0.00',
-              'Qtd. OC': '313.20',
-              'Qtd. EDI': '181418',
-              'Nome fornecedor': 'INBRAPE TECIDOS INDÚSTRIAIS LTDA',
-              'Und.': 'M2'
-            },
-            { 
-              id: 'm12',
-              'Id': 'a15298cd-4870-496a-8d07-2c9ffbc4a9e8',
-              'Produto': '101531', 
-              'Descrição produto': 'REFORCO ENTRETELA SOFTLINE M5C 13 PRETO LARG 1,45M 130GR/M2 80%PES REC. 20%PES', 
-              'Tamanho': '0',
-              'Semana': '2025/43',
-              'Modelo': 'RECOVERY',
-              'Legenda': 'FATURADO',
-              'Documento': 'BRITB004152',
-              'OP': '14556270',
-              'Reserva': '178.13',
-              'Qtd. estoque': '0.00',
-              'Saldo': '0.00',
-              'Qtd. OC': '1138.25',
-              'Qtd. EDI': '181472',
-              'Nome fornecedor': 'INBRAPE TECIDOS INDÚSTRIAIS LTDA',
-              'Und.': 'M2'
-            }
-          ]);
+        case 'getMateriasData': {
+          const stored = localStorage.getItem('pcp_materias_data');
+          if (stored) {
+            resolve(JSON.parse(stored));
+          } else {
+            const initial = [
+              { 
+                id: 'm1',
+                'Id': 'a15298cd-4870-496a-8d07-2c9ffbc4a9d7',
+                'Produto': '101484', 
+                'Descrição produto': 'TECIDO KETTEN K817/2 3 1098 JERSEY CRU 99 A004 FIX NK LARG 1,48M 44,6GR/M2 100%PES', 
+                'Tamanho': '0',
+                'Semana': '2025/29',
+                'Modelo': 'BREEZE',
+                'Legenda': 'ESTOQUE',
+                'Documento': 'FIL001441',
+                'OP': '15669806',
+                'Reserva': '108.24',
+                'Qtd. estoque': '0.00',
+                'Saldo': '32150.11',
+                'Qtd. OC': '0',
+                'Qtd. EDI': '0',
+                'Nome fornecedor': 'TWILTEX INDUSTRIAS TEXTEIS LTD',
+                'Und.': 'M2',
+                'Observação': ''
+              },
+              { 
+                id: 'm2',
+                'Id': 'a15298cd-4870-496a-8d07-2c9ffbc4a9d8',
+                'Produto': '101484', 
+                'Descrição produto': 'TECIDO KETTEN K817/2 3 1098 JERSEY CRU 99 A004 FIX NK LARG 1,48M 44,6GR/M2 100%PES', 
+                'Tamanho': '0',
+                'Semana': '2025/29',
+                'Modelo': 'RISE UP',
+                'Legenda': 'ESTOQUE',
+                'Documento': 'BRITB005144',
+                'OP': '15669828',
+                'Reserva': '108.91',
+                'Qtd. estoque': '0.00',
+                'Saldo': '31919.65',
+                'Qtd. OC': '0',
+                'Qtd. EDI': '0',
+                'Nome fornecedor': 'TWILTEX INDUSTRIAS TEXTEIS LTD',
+                'Und.': 'M2',
+                'Observação': ''
+              },
+              { 
+                id: 'm3',
+                'Id': 'a15298cd-4870-496a-8d07-2c9ffbc4a9d9',
+                'Produto': '101484', 
+                'Descrição produto': 'TECIDO KETTEN K817/2 3 1098 JERSEY CRU 99 A004 FIX NK LARG 1,48M 44,6GR/M2 100%PES', 
+                'Tamanho': '0',
+                'Semana': '2025/29',
+                'Modelo': 'RISE UP',
+                'Legenda': 'ESTOQUE',
+                'Documento': 'BRITB005145',
+                'OP': '15568939',
+                'Reserva': '98.66',
+                'Qtd. estoque': '0.00',
+                'Saldo': '31820.98',
+                'Qtd. OC': '0',
+                'Qtd. EDI': '0',
+                'Nome fornecedor': 'TWILTEX INDUSTRIAS TEXTEIS LTD',
+                'Und.': 'M2',
+                'Observação': ''
+              },
+              { 
+                id: 'm4',
+                'Id': 'a15298cd-4870-496a-8d07-2c9ffbc4a9e0',
+                'Produto': '101484', 
+                'Descrição produto': 'TECIDO KETTEN K817/2 3 1098 JERSEY CRU 99 A004 FIX NK LARG 1,48M 44,6GR/M2 100%PES', 
+                'Tamanho': '0',
+                'Semana': '2025/29',
+                'Modelo': 'RISE UP',
+                'Legenda': 'ESTOQUE',
+                'Documento': 'BRITB005146',
+                'OP': '15568950',
+                'Reserva': '87.29',
+                'Qtd. estoque': '0.00',
+                'Saldo': '31733.68',
+                'Qtd. OC': '0',
+                'Qtd. EDI': '0',
+                'Nome fornecedor': 'TWILTEX INDUSTRIAS TEXTEIS LTD',
+                'Und.': 'M2',
+                'Observação': ''
+              },
+              { 
+                id: 'm5',
+                'Id': 'a15298cd-4870-496a-8d07-2c9ffbc4a9e1',
+                'Produto': '101484', 
+                'Descrição produto': 'TECIDO KETTEN K817/2 3 1098 JERSEY CRU 99 A004 FIX NK LARG 1,48M 44,6GR/M2 100%PES', 
+                'Tamanho': '0',
+                'Semana': '2025/30',
+                'Modelo': 'PRIZE',
+                'Legenda': 'ESTOQUE',
+                'Documento': 'NET000067',
+                'OP': '15670120',
+                'Reserva': '45.52',
+                'Qtd. estoque': '0.00',
+                'Saldo': '31449.36',
+                'Qtd. OC': '0',
+                'Qtd. EDI': '0',
+                'Nome fornecedor': 'TWILTEX INDUSTRIAS TEXTEIS LTD',
+                'Und.': 'M2',
+                'Observação': ''
+              },
+              { 
+                id: 'm6',
+                'Id': 'a15298cd-4870-496a-8d07-2c9ffbc4a9e2',
+                'Produto': '101484', 
+                'Descrição produto': 'TECIDO KETTEN K817/2 3 1098 JERSEY CRU 99 A004 FIX NK LARG 1,48M 44,6GR/M2 100%PES', 
+                'Tamanho': '0',
+                'Semana': '2025/30',
+                'Modelo': 'PRIZE',
+                'Legenda': 'ESTOQUE',
+                'Documento': 'NET000073',
+                'OP': '15670121',
+                'Reserva': '26.10',
+                'Qtd. estoque': '0.00',
+                'Saldo': '31423.25',
+                'Qtd. OC': '0',
+                'Qtd. EDI': '0',
+                'Nome fornecedor': 'TWILTEX INDUSTRIAS TEXTEIS LTD',
+                'Und.': 'M2',
+                'Observação': ''
+              },
+              { 
+                id: 'm7',
+                'Id': 'a15298cd-4870-496a-8d07-2c9ffbc4a9e3',
+                'Produto': '101484', 
+                'Descrição produto': 'TECIDO KETTEN K817/2 3 1098 JERSEY CRU 99 A004 FIX NK LARG 1,48M 44,6GR/M2 100%PES', 
+                'Tamanho': '0',
+                'Semana': '2025/43',
+                'Modelo': 'AGILE',
+                'Legenda': 'FATURADO',
+                'Documento': 'FIL001003',
+                'OP': '14646362',
+                'Reserva': '30.15',
+                'Qtd. estoque': '0.00',
+                'Saldo': '0.00',
+                'Qtd. OC': '1554.00',
+                'Qtd. EDI': '433053',
+                'Nome fornecedor': 'TWILTEX INDUSTRIAS TEXTEIS LTD',
+                'Und.': 'M2',
+                'Observação': ''
+              },
+              { 
+                id: 'm8',
+                'Id': 'a15298cd-4870-496a-8d07-2c9ffbc4a9e4',
+                'Produto': '101484', 
+                'Descrição produto': 'TECIDO KETTEN K817/2 3 1098 JERSEY CRU 99 A004 FIX NK LARG 1,48M 44,6GR/M2 100%PES', 
+                'Tamanho': '0',
+                'Semana': '2025/43',
+                'Modelo': 'AGILE',
+                'Legenda': 'FATURADO',
+                'Documento': 'FIL001004',
+                'OP': '14646377',
+                'Reserva': '23.71',
+                'Qtd. estoque': '0.00',
+                'Saldo': '0.00',
+                'Qtd. OC': '1554.00',
+                'Qtd. EDI': '433053',
+                'Nome fornecedor': 'TWILTEX INDUSTRIAS TEXTEIS LTD',
+                'Und.': 'M2',
+                'Observação': ''
+              },
+              { 
+                id: 'm9',
+                'Id': 'a15298cd-4870-496a-8d07-2c9ffbc4a9e5',
+                'Produto': '101531', 
+                'Descrição produto': 'REFORCO ENTRETELA SOFTLINE M5C 13 PRETO LARG 1,45M 130GR/M2 80%PES REC. 20%PES', 
+                'Tamanho': '0',
+                'Semana': '2025/40',
+                'Modelo': 'VENTURE TRACER 2',
+                'Legenda': 'ESTOQUE',
+                'Documento': 'BRITB004133',
+                'OP': '14482899',
+                'Reserva': '157.72',
+                'Qtd. estoque': '0.00',
+                'Saldo': '8980.12',
+                'Qtd. OC': '0',
+                'Qtd. EDI': '0',
+                'Nome fornecedor': 'INBRAPE TECIDOS INDÚSTRIAIS LTDA',
+                'Und.': 'M2',
+                'Observação': ''
+              },
+              { 
+                id: 'm10',
+                'Id': 'a15298cd-4870-496a-8d07-2c9ffbc4a9e6',
+                'Produto': '101531', 
+                'Descrição produto': 'REFORCO ENTRETELA SOFTLINE M5C 13 PRETO LARG 1,45M 130GR/M2 80%PES REC. 20%PES', 
+                'Tamanho': '0',
+                'Semana': '2025/40',
+                'Modelo': 'FREESTYLE II',
+                'Legenda': 'ESTOQUE',
+                'Documento': 'BRITB003950',
+                'OP': '14480436',
+                'Reserva': '80.01',
+                'Qtd. estoque': '0.00',
+                'Saldo': '8665.03',
+                'Qtd. OC': '0',
+                'Qtd. EDI': '0',
+                'Nome fornecedor': 'INBRAPE TECIDOS INDÚSTRIAIS LTDA',
+                'Und.': 'M2',
+                'Observação': ''
+              },
+              { 
+                id: 'm11',
+                'Id': 'a15298cd-4870-496a-8d07-2c9ffbc4a9e7',
+                'Produto': '101531', 
+                'Descrição produto': 'REFORCO ENTRETELA SOFTLINE M5C 13 PRETO LARG 1,45M 130GR/M2 80%PES REC. 20%PES', 
+                'Tamanho': '0',
+                'Semana': '2025/43',
+                'Modelo': 'COMET 2',
+                'Legenda': 'FATURADO',
+                'Documento': 'BRITB003980',
+                'OP': '14481191',
+                'Reserva': '187.96',
+                'Qtd. estoque': '0.00',
+                'Saldo': '0.00',
+                'Qtd. OC': '313.20',
+                'Qtd. EDI': '181418',
+                'Nome fornecedor': 'INBRAPE TECIDOS INDÚSTRIAIS LTDA',
+                'Und.': 'M2',
+                'Observação': ''
+              },
+              { 
+                id: 'm12',
+                'Id': 'a15298cd-4870-496a-8d07-2c9ffbc4a9e8',
+                'Produto': '101531', 
+                'Descrição produto': 'REFORCO ENTRETELA SOFTLINE M5C 13 PRETO LARG 1,45M 130GR/M2 80%PES REC. 20%PES', 
+                'Tamanho': '0',
+                'Semana': '2025/43',
+                'Modelo': 'RECOVERY',
+                'Legenda': 'FATURADO',
+                'Documento': 'BRITB004152',
+                'OP': '14556270',
+                'Reserva': '178.13',
+                'Qtd. estoque': '0.00',
+                'Saldo': '0.00',
+                'Qtd. OC': '1138.25',
+                'Qtd. EDI': '181472',
+                'Nome fornecedor': 'INBRAPE TECIDOS INDÚSTRIAIS LTDA',
+                'Und.': 'M2',
+                'Observação': ''
+              }
+            ];
+            localStorage.setItem('pcp_materias_data', JSON.stringify(initial));
+            resolve(initial);
+          }
           break;
-        case 'saveMateriaData':
-          console.log('Mock saving Materia data:', data);
-          resolve({ success: true, id: data.id || 'mock-mat-id-' + Date.now() });
+        }
+        case 'saveMateriaData': {
+          const stored = localStorage.getItem('pcp_materias_data');
+          let list = stored ? JSON.parse(stored) : [];
+          const actualData = { ...data };
+          if (actualData.id) {
+            list = list.map((item: any) => {
+              if (item.id === actualData.id) {
+                // Preserva propriedades antigas se novas vierem parciais (como Observação)
+                return { ...item, ...actualData };
+              }
+              return item;
+            });
+          } else {
+            actualData.id = 'm_' + Date.now();
+            list = [actualData, ...list];
+          }
+          localStorage.setItem('pcp_materias_data', JSON.stringify(list));
+          resolve({ success: true, data: actualData });
           break;
-        case 'deleteMateriaData':
-          console.log('Mock deleting Materia data:', data);
-          resolve({ success: true, id: data.id });
+        }
+        case 'deleteMateriaData': {
+          const stored = localStorage.getItem('pcp_materias_data');
+          let list = stored ? JSON.parse(stored) : [];
+          list = list.filter((item: any) => item.id !== data.id);
+          localStorage.setItem('pcp_materias_data', JSON.stringify(list));
+          resolve({ success: true });
           break;
+        }
         case 'getAwbData': {
           const stored = localStorage.getItem('pcp_awb_data');
           if (stored) {

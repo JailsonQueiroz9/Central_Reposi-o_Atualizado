@@ -31,6 +31,8 @@ import { api } from '@/lib/api';
 import { dataCache } from '@/lib/cache';
 import { jsPDF } from 'jspdf';
 import MateriaPrimaPivotTable from './MateriaPrimaPivotTable';
+import { savePdfToStorage, getPdfFromStorage } from '@/lib/pdf-store';
+import { parsePdfContent } from '@/lib/pdfParser';
 
 interface FollowUpOrder {
   id: string;
@@ -274,8 +276,45 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
     setPreviewedDocName(null);
   };
 
+  useEffect(() => {
+    if (previewedDocName && !uploadedFilesCache[previewedDocName]) {
+      // 1. Tenta obter o PDF do FileBinaries compartilhado do registro da AWB
+      if (selectedDocsAwb && selectedDocsAwb.FileBinaries && selectedDocsAwb.FileBinaries[previewedDocName]) {
+        const content = selectedDocsAwb.FileBinaries[previewedDocName];
+        setUploadedFilesCache(prev => ({
+          ...prev,
+          [previewedDocName]: content
+        }));
+        // Opcional: salva no IndexedDB local também para performance futura
+        savePdfToStorage(previewedDocName, content);
+      } else {
+        // 2. Fallback para o IndexedDB local
+        getPdfFromStorage(previewedDocName).then(content => {
+          if (content) {
+            setUploadedFilesCache(prev => ({
+              ...prev,
+              [previewedDocName]: content
+            }));
+          }
+        });
+      }
+    }
+  }, [previewedDocName, selectedDocsAwb]);
+
   const [uploadedFilesCache, setUploadedFilesCache] = useState<Record<string, string>>({});
   const [isDraggingPdf, setIsDraggingPdf] = useState(false);
+  const [onTheFlyParsedInfo, setOnTheFlyParsedInfo] = useState<Record<string, any>>({});
+
+  useEffect(() => {
+    if (previewedDocName && uploadedFilesCache[previewedDocName] && !onTheFlyParsedInfo[previewedDocName]) {
+      parsePdfContent(uploadedFilesCache[previewedDocName], previewedDocName).then(parsed => {
+        setOnTheFlyParsedInfo(prev => ({
+          ...prev,
+          [previewedDocName]: parsed
+        }));
+      });
+    }
+  }, [previewedDocName, uploadedFilesCache, onTheFlyParsedInfo]);
 
   // Permite ler arquivos PDF selecionados e adicionar seus nomes a DocList
   const handlePdfUpload = (files: FileList | null, isFromAwbModal: boolean = false) => {
@@ -294,6 +333,79 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
             ...prev,
             [file.name]: content
           }));
+          // Persiste o PDF original no IndexedDB do navegador
+          savePdfToStorage(file.name, content);
+
+          // Extrai os dados originais do PDF em segundo plano
+          parsePdfContent(content, file.name).then((parsedData) => {
+            console.log("PDF parsed details:", parsedData);
+            
+            // Salva no cache local para uso imediato
+            setOnTheFlyParsedInfo(prev => ({
+              ...prev,
+              [file.name]: parsedData
+            }));
+
+            // Armazena no payload de envio da AWB para sincronizar com outros usuários
+            if (isFromAwbModal) {
+              setAwbForm(prev => {
+                // Auto-preenche apenas campos que estejam vazios ou padrão
+                const updatedForm = {
+                  ...prev,
+                  Fornecedor: prev.Fornecedor || parsedData.Fornecedor,
+                  NFs: prev.NFs || parsedData.NumeroNF,
+                  Awb: prev.Awb || parsedData.Awb,
+                  Material: prev.Material || parsedData.Material,
+                  Saida: prev.Saida || parsedData.DataSaida,
+                  Transportadora: parsedData.Transportadora || prev.Transportadora,
+                  Observacao: prev.Observacao ? `${prev.Observacao}\n${parsedData.Observacao}` : parsedData.Observacao,
+                  FileBinaries: {
+                    ...(prev.FileBinaries || {}),
+                    [file.name]: content
+                  },
+                  FileBinariesInfo: {
+                    ...(prev.FileBinariesInfo || {}),
+                    [file.name]: parsedData
+                  }
+                };
+                return updatedForm;
+              });
+            } else if (selectedDocsAwb) {
+              setSelectedDocsAwb((prev: any) => {
+                if (!prev) return prev;
+                const updatedBinaries = {
+                  ...(prev.FileBinaries || {}),
+                  [file.name]: content
+                };
+                
+                const updatedFileBinariesInfo = {
+                  ...(prev.FileBinariesInfo || {}),
+                  [file.name]: parsedData
+                };
+
+                const updatedDocs = Array.isArray(prev.DocList)
+                  ? (prev.DocList.includes(file.name) ? prev.DocList : [...prev.DocList, file.name])
+                  : [file.name];
+                
+                const updatedPayload = {
+                  ...prev,
+                  Fornecedor: prev.Fornecedor || parsedData.Fornecedor,
+                  NFs: prev.NFs || parsedData.NumeroNF,
+                  Awb: prev.Awb || parsedData.Awb,
+                  Material: prev.Material || parsedData.Material,
+                  DocList: updatedDocs,
+                  Docs: updatedDocs.length,
+                  FileBinaries: updatedBinaries,
+                  FileBinariesInfo: updatedFileBinariesInfo
+                };
+
+                // Envia os dados para a API (com o binário compartilhado) e atualiza estado local
+                api.post('saveAwbData', updatedPayload);
+                setAwbList((localList: any[]) => localList.map(item => item.id === prev.id ? updatedPayload : item));
+                return updatedPayload;
+              });
+            }
+          });
         };
         reader.readAsDataURL(file);
       } else {
@@ -308,19 +420,32 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
         ...prev,
         DocList: [...(prev.DocList || []), ...newFileNames]
       }));
-    } else if (selectedDocsAwb) {
-      const updatedDocs = Array.isArray(selectedDocsAwb.DocList) 
-        ? [...selectedDocsAwb.DocList, ...newFileNames] 
-        : ['Invoice_Anexo.pdf', ...newFileNames];
-      
-      setAwbList((prev: any[]) => prev.map(item => item.id === selectedDocsAwb.id ? { ...item, DocList: updatedDocs, Docs: updatedDocs.length } : item));
-      setSelectedDocsAwb({ ...selectedDocsAwb, DocList: updatedDocs });
-      api.post('saveAwbData', { ...selectedDocsAwb, DocList: updatedDocs });
     }
   };
 
-  const downloadDocument = (docName: string, awbItem: any) => {
-    const cachedDataUrl = uploadedFilesCache[docName];
+  const downloadDocument = async (docName: string, awbItem: any) => {
+    let cachedDataUrl = uploadedFilesCache[docName];
+    if (!cachedDataUrl) {
+      // 1. Tenta obter do FileBinaries compartilhado no registro do AWB
+      if (awbItem && awbItem.FileBinaries && awbItem.FileBinaries[docName]) {
+        cachedDataUrl = awbItem.FileBinaries[docName];
+        setUploadedFilesCache(prev => ({
+          ...prev,
+          [docName]: cachedDataUrl
+        }));
+      } else {
+        // 2. Busca no IndexedDB o PDF original que foi importado
+        const content = await getPdfFromStorage(docName);
+        if (content) {
+          cachedDataUrl = content;
+          setUploadedFilesCache(prev => ({
+            ...prev,
+            [docName]: content
+          }));
+        }
+      }
+    }
+
     if (cachedDataUrl) {
       const link = document.createElement('a');
       link.href = cachedDataUrl;
@@ -328,8 +453,225 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+    } else if (docName.toLowerCase().endsWith('.pdf')) {
+      const doc = new jsPDF();
+      
+      let key = '35260243631191000100550020010732631165266879';
+      let nfNum = '1073263';
+      let supplier = String(awbItem?.Fornecedor || 'BRANYL COM. IND. TEXTIL LTDA.');
+
+      // Tenta obter dados reais do PDF
+      const parsedInfo = awbItem?.FileBinariesInfo?.[docName] || onTheFlyParsedInfo[docName];
+      if (parsedInfo) {
+        if (parsedInfo.ChaveDeAcesso) key = parsedInfo.ChaveDeAcesso;
+        if (parsedInfo.NumeroNF) nfNum = parsedInfo.NumeroNF;
+        if (parsedInfo.Fornecedor) supplier = parsedInfo.Fornecedor;
+      } else {
+        const digits = docName.replace(/\D/g, '');
+        if (digits.length >= 7) {
+          if (digits.length >= 44) {
+            key = digits.substring(0, 44);
+            nfNum = digits.substring(25, 34).replace(/^0+/, '') || '1073263';
+          } else {
+            nfNum = digits.substring(0, 7);
+          }
+        }
+      }
+      
+      const formattedKey = String(key.replace(/(.{4})/g, '$1 ').trim());
+      const awb = String(awbItem?.Awb !== undefined && awbItem?.Awb !== null ? awbItem.Awb : 'N/A');
+      const marca = String(awbItem?.Marca !== undefined && awbItem?.Marca !== null ? awbItem.Marca : 'N/A');
+      const nfs = String(awbItem?.NFs !== undefined && awbItem?.NFs !== null ? awbItem.NFs : 'N/A');
+      const transp = String(awbItem?.Transportadora !== undefined && awbItem?.Transportadora !== null ? awbItem.Transportadora : 'N/A');
+      
+      // Borda Externa da Folha
+      doc.setDrawColor(0, 0, 0);
+      doc.setLineWidth(0.5);
+      doc.rect(8, 8, 194, 280);
+      
+      // 1. Recibo de Entrega (topo)
+      doc.rect(10, 10, 190, 22);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.text("RECEBEMOS DE " + supplier.toUpperCase() + " OS PRODUTOS E/OU SERVIÇOS CONSTANTES DA NOTA FISCAL INDICADA AO LADO", 12, 15, { maxWidth: 145 });
+      
+      doc.setFontSize(7);
+      doc.text("DATA DE RECEBIMENTO", 12, 24);
+      doc.text("IDENTIFICAÇÃO E ASSINATURA DO RECEBEDOR", 85, 24);
+      
+      // Linhas divisórias internas do recibo
+      doc.line(10, 20, 160, 20);
+      doc.line(80, 20, 80, 32);
+      doc.line(160, 10, 160, 32); // coluna NF-e do recibo
+      
+      doc.setFontSize(10);
+      doc.text("NF-e", 172, 15);
+      doc.setFontSize(11);
+      doc.setTextColor(0, 0, 255);
+      doc.text("Nº " + nfNum, 168, 21);
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(6.5);
+      doc.text("SÉRIE 2 - FL 1/1", 168, 26);
+      
+      // Separador pontilhado/linha dupla abaixo do recibo
+      doc.setLineDashPattern([2, 2], 0);
+      doc.line(10, 35, 200, 35);
+      doc.setLineDashPattern([], 0); // reset
+      
+      // 2. Cabeçalho Principal (Emitente, DANFE, Chave de Acesso)
+      // Caixa do Emitente
+      doc.rect(10, 38, 85, 45);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.text(supplier.toUpperCase(), 12, 45, { maxWidth: 81 });
+      
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.text("RUA FLAVIO GIACOMINI, SN - PIPEIRO", 12, 57);
+      doc.text("CEP: 13363-160 - CAPIVARI - SP", 12, 62);
+      doc.text("FONE: (19) 3492-8400", 12, 67);
+      
+      // Caixa do DANFE
+      doc.rect(95, 38, 45, 45);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text("DANFE", 108, 46);
+      doc.setFontSize(6.5);
+      doc.setFont('helvetica', 'normal');
+      doc.text("Documento Auxiliar da", 103, 51);
+      doc.text("Nota Fiscal Eletrônica", 103, 54);
+      
+      // Entrada/Saída Box
+      doc.rect(112, 57, 12, 10);
+      doc.setFontSize(5);
+      doc.text("0 - Entrada\n1 - Saída", 113, 60);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(10);
+      doc.text("1", 116, 65);
+      
+      doc.setFontSize(9);
+      doc.text("Nº " + nfNum, 108, 73);
+      doc.setFontSize(7);
+      doc.text("SÉRIE 2", 112, 78);
+      
+      // Caixa do Controle / Chave de Acesso
+      doc.rect(140, 38, 60, 45);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.text("CHAVE DE ACESSO", 142, 43);
+      
+      // Código de barras simulado (linhas desenhadas)
+      let barX = 142;
+      doc.setFillColor(0, 0, 0);
+      for (let b = 0; b < 28; b++) {
+        const w = (b % 3 === 0) ? 0.8 : 0.4;
+        const g = (b % 4 === 0) ? 1.2 : 0.6;
+        doc.rect(barX, 45, w, 15, 'F');
+        barX += w + g;
+      }
+      
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(6.5);
+      doc.text(formattedKey, 142, 65, { maxWidth: 56 });
+      
+      doc.setFontSize(6);
+      doc.text("Consulta de autenticidade no portal nacional da NF-e", 142, 73, { maxWidth: 56 });
+      doc.text("www.nfe.fazenda.gov.br", 142, 78);
+      
+      // 3. Informações da Carga, AWB e Transporte
+      doc.setFillColor(245, 245, 245);
+      doc.rect(10, 86, 190, 6, 'F');
+      doc.rect(10, 86, 190, 6);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.text("DADOS DE TRANSPORTE & LOGÍSTICA (AWB)", 12, 90.5);
+      
+      doc.rect(10, 92, 190, 32);
+      // Linhas de grid
+      doc.line(10, 100, 200, 100);
+      doc.line(10, 108, 200, 108);
+      doc.line(10, 116, 200, 116);
+      
+      // Colunas
+      doc.line(55, 92, 55, 124);
+      doc.line(110, 92, 110, 124);
+      doc.line(155, 92, 155, 124);
+      
+      doc.setFontSize(6.5);
+      // Linha 1
+      doc.setFont('helvetica', 'bold'); doc.text("AWB CONTROLE:", 12, 95); doc.setFont('helvetica', 'normal'); doc.text(awb, 12, 98.5);
+      doc.setFont('helvetica', 'bold'); doc.text("MARCA / BRAND:", 57, 95); doc.setFont('helvetica', 'normal'); doc.text(marca, 57, 98.5);
+      doc.setFont('helvetica', 'bold'); doc.text("TRANSPORTADORA:", 112, 95); doc.setFont('helvetica', 'normal'); doc.text(transp, 112, 98.5);
+      doc.setFont('helvetica', 'bold'); doc.text("SITUAÇÃO / STATUS:", 157, 95); doc.setFont('helvetica', 'normal'); doc.text(String(awbItem?.Status || 'EM TRÂNSITO'), 157, 98.5);
+      
+      // Linha 2
+      doc.setFont('helvetica', 'bold'); doc.text("NOTAS FISCAIS (NFs):", 12, 103); doc.setFont('helvetica', 'normal'); doc.text(nfs, 12, 106.5);
+      doc.setFont('helvetica', 'bold'); doc.text("DATA SAÍDA / ENTRADA:", 57, 103); doc.setFont('helvetica', 'normal'); doc.text(String(awbItem?.Saida || 'N/A'), 57, 106.5);
+      doc.setFont('helvetica', 'bold'); doc.text("MATERIAL PRINCIPAL:", 112, 103); doc.setFont('helvetica', 'normal'); doc.text(String(awbItem?.Material || 'N/A'), 112, 106.5);
+      doc.setFont('helvetica', 'bold'); doc.text("RASTREIO LINK:", 157, 103); doc.setFont('helvetica', 'normal'); doc.text(awbItem?.Rastreio ? "Disponível no sistema" : "N/A", 157, 106.5);
+      
+      // Linha 3
+      doc.setFont('helvetica', 'bold'); doc.text("CÓDIGO DE RASTREIO:", 12, 111); doc.setFont('helvetica', 'normal'); doc.text(String(awbItem?.RastreioCodigo || 'N/A'), 12, 114.5);
+      doc.setFont('helvetica', 'bold'); doc.text("QUANTIDADE DE DOCS:", 57, 111); doc.setFont('helvetica', 'normal'); doc.text(String((awbItem?.DocList || []).length), 57, 114.5);
+      doc.setFont('helvetica', 'bold'); doc.text("EMISSOR DO REGISTRO:", 112, 111); doc.setFont('helvetica', 'normal'); doc.text(String(awbItem?.CriadoPor || 'SISTEMA PCP'), 112, 114.5);
+      doc.setFont('helvetica', 'bold'); doc.text("DATA DE CADASTRO:", 157, 111); doc.setFont('helvetica', 'normal'); doc.text(String(awbItem?.CriadoEm || new Date().toLocaleDateString('pt-BR')), 157, 114.5);
+      
+      // Linha 4
+      doc.setFont('helvetica', 'bold'); doc.text("OBSERVAÇÕES DO REGISTRO:", 12, 119); doc.setFont('helvetica', 'normal'); doc.text(String(awbItem?.Observacao || 'Sem observações adicionais.'), 12, 122.5, { maxWidth: 180 });
+      
+      // 4. Detalhes dos Itens da NF (Tabela Simulada)
+      doc.setFillColor(245, 245, 245);
+      doc.rect(10, 131, 190, 6, 'F');
+      doc.rect(10, 131, 190, 6);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7.5);
+      doc.text("DADOS DOS PRODUTOS / SERVIÇOS CONSTANTES NA DANFE", 12, 135.5);
+      
+      // Tabela de itens
+      doc.rect(10, 137, 190, 45);
+      // Linha cabeçalho tabela
+      doc.setFillColor(250, 250, 250);
+      doc.rect(10, 137, 190, 6, 'F');
+      doc.rect(10, 137, 190, 6);
+      
+      // Colunas da tabela
+      doc.line(30, 137, 30, 182);
+      doc.line(110, 137, 110, 182);
+      doc.line(125, 137, 125, 182);
+      doc.line(138, 137, 138, 182);
+      doc.line(155, 137, 155, 182);
+      doc.line(175, 137, 175, 182);
+      
+      doc.setFontSize(6);
+      doc.setFont('helvetica', 'bold');
+      doc.text("CÓD. PROD.", 12, 141);
+      doc.text("DESCRIÇÃO DO PRODUTO / SERVIÇO", 32, 141);
+      doc.text("NCM", 112, 141);
+      doc.text("CST", 127, 141);
+      doc.text("CFOP", 140, 141);
+      doc.text("UNID.", 157, 141);
+      doc.text("QUANT.", 177, 141);
+      
+      // Dados da linha 1
+      doc.setFont('helvetica', 'normal');
+      doc.text("000135575", 12, 148);
+      doc.text(String(awbItem?.Material || "TECIDO SINTETICO DE REPOSICAO PREMIUM DASS").toUpperCase(), 32, 148, { maxWidth: 76 });
+      doc.text("54075210", 112, 148);
+      doc.text("000", 127, 148);
+      doc.text("5101", 140, 148);
+      doc.text("M²", 157, 148);
+      doc.text("230.000", 177, 148);
+      
+      // Rodapé institucional
+      doc.setFontSize(7);
+      doc.setFont('helvetica', 'italic');
+      doc.setTextColor(100, 100, 100);
+      doc.text("Este é um Documento Auxiliar gerado automaticamente pelo Sistema de Gestão PCP Grupo Dass.", 15, 275);
+      doc.setTextColor(0, 0, 0);
+      
+      doc.save(docName);
     } else {
-      const fileContent = `CONTEÚDO DO DOCUMENTO: ${docName}\nAWB: ${awbItem.Awb}\nMARCA: ${awbItem.Marca}\nFORNECEDOR: ${awbItem.Fornecedor}\nNFs: ${awbItem.NFs || 'N/A'}`;
+      const fileContent = `CONTEÚDO DO DOCUMENTO: ${docName}\nAWB: ${awbItem?.Awb || 'N/A'}\nMARCA: ${awbItem?.Marca || 'N/A'}\nFORNECEDOR: ${awbItem?.Fornecedor || 'N/A'}\nNFs: ${awbItem?.NFs || 'N/A'}`;
       const blob = new Blob([fileContent], { type: 'text/plain' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -352,7 +694,9 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
     Observacao: '',
     Rastreio: 'https://www.latamcargo.com/pt/trackshipment?docNumber=&docPrefix=&soType=SO',
     DocList: [] as string[],
-    Transportadora: 'LATAM'
+    Transportadora: 'LATAM',
+    FileBinaries: {} as Record<string, string>,
+    FileBinariesInfo: {} as Record<string, any>
   });
 
   const fetchAwbData = async () => {
@@ -463,7 +807,9 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
       Observacao: '',
       Rastreio: 'https://www.latamcargo.com/pt/trackshipment?docNumber=&docPrefix=&soType=SO',
       DocList: ['Invoice_' + Math.floor(Math.random() * 1000000) + '.pdf', 'Packing_List.pdf'],
-      Transportadora: 'LATAM'
+      Transportadora: 'LATAM',
+      FileBinaries: {},
+      FileBinariesInfo: {}
     });
     setIsAwbModalOpen(true);
   };
@@ -500,7 +846,9 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
       Observacao: item.Observacao || '',
       Rastreio: resolvedRastreio,
       DocList: Array.isArray(item.DocList) ? item.DocList : ['Invoice_Anexo.pdf'],
-      Transportadora: defaultTransportadora
+      Transportadora: defaultTransportadora,
+      FileBinaries: item.FileBinaries || {},
+      FileBinariesInfo: item.FileBinariesInfo || {}
     });
     setIsAwbModalOpen(true);
   };
@@ -558,6 +906,25 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
       await api.post('deleteMateriaData', { id });
     } catch (err) {
       console.error('Erro ao deletar matéria-prima:', err);
+    }
+  };
+
+  const handleUpdateMateriaObservacao = async (id: string, text: string) => {
+    try {
+      setMateriaisList(prev => prev.map(m => m.id === id ? { ...m, 'Observação': text } : m));
+      const stored = localStorage.getItem('pcp_materias_data');
+      if (stored) {
+        let list = JSON.parse(stored);
+        list = list.map((item: any) => {
+          if (item.id === id) {
+            return { ...item, 'Observação': text };
+          }
+          return item;
+        });
+        localStorage.setItem('pcp_materias_data', JSON.stringify(list));
+      }
+    } catch (err) {
+      console.error('Erro ao atualizar observação da matéria-prima:', err);
     }
   };
 
@@ -1451,6 +1818,7 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
         data={materias} 
         onRefresh={fetchMaterias} 
         isLoading={loadingMaterias} 
+        onUpdateObservacao={handleUpdateMateriaObservacao}
       />
 
       {/* Modal de Cadastro/Edição de Matéria-Prima */}
@@ -2481,20 +2849,30 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
                     <div className="flex-1 overflow-y-auto p-4 bg-slate-200/60 custom-scrollbar flex justify-center items-start">
                       <div id="danfe-preview-print-area" className="bg-white shadow-xl p-5 border border-gray-300 w-full max-w-[650px] text-[9px] leading-tight text-slate-950 font-sans select-none my-1">
                         {(() => {
-                          // Extrair dados da chave e número da NF a partir do nome do arquivo
-                          const digits = previewedDocName.replace(/\D/g, '');
                           let key = '35260243631191000100550020010732631165266879';
                           let nfNum = '1073263';
-                          if (digits.length >= 7) {
-                            if (digits.length >= 44) {
-                              key = digits.substring(0, 44);
-                              nfNum = digits.substring(25, 34).replace(/^0+/, '') || '1073263';
-                            } else {
-                              nfNum = digits.substring(0, 7);
+                          let supplier = selectedDocsAwb?.Fornecedor || 'BRANYL COM. IND. TEXTIL LTDA.';
+
+                          // Tenta ler dados extraídos originalmente do arquivo
+                          const parsedInfo = selectedDocsAwb?.FileBinariesInfo?.[previewedDocName] || onTheFlyParsedInfo[previewedDocName];
+                          
+                          if (parsedInfo) {
+                            if (parsedInfo.ChaveDeAcesso) key = parsedInfo.ChaveDeAcesso;
+                            if (parsedInfo.NumeroNF) nfNum = parsedInfo.NumeroNF;
+                            if (parsedInfo.Fornecedor) supplier = parsedInfo.Fornecedor;
+                          } else {
+                            // Extrair dados da chave e número da NF a partir do nome do arquivo (fallback)
+                            const digits = previewedDocName.replace(/\D/g, '');
+                            if (digits.length >= 7) {
+                              if (digits.length >= 44) {
+                                key = digits.substring(0, 44);
+                                nfNum = digits.substring(25, 34).replace(/^0+/, '') || '1073263';
+                              } else {
+                                nfNum = digits.substring(0, 7);
+                              }
                             }
                           }
                           
-                          const supplier = selectedDocsAwb.Fornecedor || 'BRANYL COM. IND. TEXTIL LTDA.';
                           const formattedKey = key.replace(/(.{4})/g, '$1 ').trim();
 
                           return (

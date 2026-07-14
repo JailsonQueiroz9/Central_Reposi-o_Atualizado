@@ -258,8 +258,24 @@ export default function Cadastro() {
     try {
       const material = await api.post('getMaterialByProduto', { produto });
       if (material) {
-        const descricao = material['Descrição'] || material['DESCRIÇÃO'] || material['Descricao'] || material['descricao'] || '';
-        updateMaterial(index, 'descricao', descricao);
+        const descricao = String(material['Descrição'] || material['DESCRIÇÃO'] || material['Descricao'] || material['descricao'] || material['Descrição produto'] || material['Descrição do Material'] || '');
+        const medida = String(material['Unidade'] || material['UNIDADE'] || material['unidade'] || material['Medida'] || material['MEDIDA'] || material['medida'] || '');
+        const qtd = String(material['Quantidade'] || material['QUANTIDADE'] || material['quantidade'] || material['Qtd'] || material['Qtd.'] || material['qtd'] || '');
+        const status = String(material['Status'] || material['STATUS'] || material['status'] || '');
+        const tam = String(material['Tamanho'] || material['TAMANHO'] || material['tamanho'] || material['Tam'] || material['tam'] || '');
+
+        setMateriais(prev => {
+          const newMateriais = [...prev];
+          newMateriais[index] = {
+            ...newMateriais[index],
+            descricao,
+            medida: medida || newMateriais[index].medida,
+            qtd: qtd || newMateriais[index].qtd,
+            status: status || newMateriais[index].status,
+            tam: tam || newMateriais[index].tam
+          };
+          return newMateriais;
+        });
       }
     } catch (e) {
       console.error(e);
@@ -816,8 +832,8 @@ export default function Cadastro() {
   };
 
   return (
-    <div className="min-h-full bg-[#F0F4F8] p-4 md:p-8 flex flex-col items-center justify-center overflow-y-auto">
-      <div className="w-full max-w-[1800px] space-y-4 relative">
+    <div className="min-h-full w-full bg-[#F0F4F8] p-2 md:p-3 flex flex-col items-stretch justify-start overflow-y-auto">
+      <div className="w-full space-y-3 relative">
         {loading && (
           <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px] z-50 flex items-center justify-center rounded-xl">
             <Loader2 className="animate-spin text-white w-12 h-12" />
@@ -933,9 +949,6 @@ export default function Cadastro() {
             </div>
           </div>
           <div className="flex-1 flex flex-col md:flex-row">
-            <div className="hidden md:block w-1/3 p-4 border-r border-red-900/10 bg-white/10">
-              {/* Empty area to align with barcodes above */}
-            </div>
             <div className="flex-1 grid grid-cols-1 md:grid-cols-2">
               <div className="border-b md:border-b-0 md:border-r border-red-900/10 flex flex-col">
                 <InputField label="MARCA" value={formData.ordem.marca} onChange={(v) => updateField('ordem', 'marca', v)} />

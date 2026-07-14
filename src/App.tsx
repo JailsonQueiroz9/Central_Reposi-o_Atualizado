@@ -11,7 +11,6 @@ import FollowUp from './components/views/FollowUp';
 import Chat from './components/views/Chat';
 import Configuracao from './components/views/Configuracao';
 import Login from './components/views/Login';
-import Register from './components/views/Register';
 import CadastroEntrega from './components/views/CadastroEntrega';
 import EntregaDublagem from './components/views/EntregaDublagem';
 import DisponivelCentral from './components/views/DisponivelCentral';
@@ -406,31 +405,14 @@ export default function App() {
   }
 
   if (!isAuthenticated) {
-    if (authView === 'login') {
-      return (
-        <Login 
-          onLogin={() => {
-            setAuthSuccessMessage(null);
-            handleLoginSuccess();
-          }} 
-          onGoToRegister={() => {
-            setAuthSuccessMessage(null);
-            setAuthView('register');
-          }} 
-          successMessage={authSuccessMessage}
-        />
-      );
-    }
     return (
-      <Register 
-        onRegisterSuccess={(email) => {
-          setAuthSuccessMessage(`Inscrição concluída com sucesso (${email})! Insira sua senha para acessar.`);
-          setAuthView('login');
-        }} 
-        onGoToLogin={() => {
+      <Login 
+        onLogin={() => {
           setAuthSuccessMessage(null);
-          setAuthView('login');
+          handleLoginSuccess();
         }} 
+        onGoToRegister={() => {}} 
+        successMessage={authSuccessMessage}
       />
     );
   }

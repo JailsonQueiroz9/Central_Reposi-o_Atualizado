@@ -27,6 +27,7 @@ interface MateriaPrimaPivotTableProps {
   data: any[];
   onRefresh?: () => void;
   isLoading?: boolean;
+  onUpdateObservacao?: (id: string, text: string) => void;
 }
 
 // Lista de campos que podem ser selecionados para agrupar as Linhas (Rows)
@@ -39,7 +40,8 @@ const AVAILABLE_ROW_FIELDS = [
   { key: 'Legenda', label: 'Legenda (Status/Estoque)' },
   { key: 'Nome fornecedor', label: 'Fornecedor' },
   { key: 'OP', label: 'Ordem de Produção (OP)' },
-  { key: 'Und.', label: 'Unidade' }
+  { key: 'Und.', label: 'Unidade' },
+  { key: 'Observação', label: 'Observação' }
 ];
 
 // Lista de campos que podem ser agregados como Valores (Values)
@@ -61,7 +63,31 @@ interface PivotNode {
   aggregates: Record<string, number>; // somas/médias calculadas
 }
 
-export default function MateriaPrimaPivotTable({ data, onRefresh, isLoading }: MateriaPrimaPivotTableProps) {
+// Componente auxiliar para edição de Observação sem lag de digitação
+function SpreadsheetInput({ value: initialValue, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [val, setVal] = useState(initialValue);
+  
+  React.useEffect(() => {
+    setVal(initialValue);
+  }, [initialValue]);
+
+  return (
+    <input
+      type="text"
+      value={val}
+      onChange={(e) => setVal(e.target.value)}
+      onBlur={() => {
+        if (val !== initialValue) {
+          onChange(val);
+        }
+      }}
+      placeholder="Escrever observação..."
+      className="w-full bg-slate-50 border border-slate-200 focus:bg-white focus:border-orange-500 rounded px-2 py-1 outline-none text-xs text-gray-800 transition-all font-sans"
+    />
+  );
+}
+
+export default function MateriaPrimaPivotTable({ data, onRefresh, isLoading, onUpdateObservacao }: MateriaPrimaPivotTableProps) {
   // Configurações da Tabela Dinâmica
   const [selectedRowFields, setSelectedRowFields] = useState<string[]>(['Documento', 'Produto', 'Descrição produto']);
   const [selectedValues, setSelectedValues] = useState<string[]>(['Reserva', 'Qtd. estoque', 'Saldo']);
@@ -72,6 +98,7 @@ export default function MateriaPrimaPivotTable({ data, onRefresh, isLoading }: M
   const [showConfigPanel, setShowConfigPanel] = useState(true);
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
   const [showTotalsOnRows, setShowTotalsOnRows] = useState(true);
+  const [viewMode, setViewMode] = useState<'pivot' | 'spreadsheet'>('pivot');
 
   // Tratamento de segurança para dados numéricos
   const parseNumeric = (val: any): number => {
@@ -89,6 +116,16 @@ export default function MateriaPrimaPivotTable({ data, onRefresh, isLoading }: M
 
   // Função para pegar um valor da linha independente de pequenas variações de chaves/acentos
   const getRowValue = (row: any, key: string): string => {
+    if (key === 'Legenda') {
+      const originalLegenda = String(row['Legenda'] || row['legenda'] || 'ESTOQUE').toUpperCase();
+      const estoqueStr = row['Qtd. estoque'] || row['Estoque Atual'] || row['Quantidade'] || row['quantidade'] || '0';
+      const estoqueVal = parseNumeric(estoqueStr);
+      if (estoqueVal <= 0 && originalLegenda === 'ESTOQUE') {
+        return 'SEM ESTOQUE';
+      }
+      return originalLegenda;
+    }
+
     if (row[key] !== undefined && row[key] !== null) return String(row[key]);
     
     // Fallbacks inteligentes
@@ -103,6 +140,9 @@ export default function MateriaPrimaPivotTable({ data, onRefresh, isLoading }: M
     }
     if (key === 'Und.') {
       return String(row['Und.'] || row['Unidade'] || row['unidade'] || 'M²');
+    }
+    if (key === 'Observação') {
+      return String(row['Observação'] || row['observacao'] || row['Observacao'] || '');
     }
     return String(row[key] || '-');
   };
@@ -179,36 +219,56 @@ export default function MateriaPrimaPivotTable({ data, onRefresh, isLoading }: M
     return buildTree(filteredData, 0, '');
   }, [filteredData, selectedRowFields, selectedValues, aggregationType]);
 
-  // Planificação da árvore considerando o estado de expansão para exibição na tabela
-  const flatTableRows = useMemo(() => {
-    const list: { node: PivotNode; isTotal?: boolean }[] = [];
+  // Agrupamento plano (Tabular) de acordo com os campos de linha selecionados
+  const tabularRows = useMemo(() => {
+    if (selectedRowFields.length === 0 || filteredData.length === 0) return [];
 
-    const traverse = (nodes: PivotNode[]) => {
-      nodes.forEach(node => {
-        list.push({ node });
+    const groups: Record<string, any[]> = {};
+    filteredData.forEach(row => {
+      const keyParts = selectedRowFields.map(field => getRowValue(row, field));
+      const groupKey = keyParts.join(' || ');
+      if (!groups[groupKey]) {
+        groups[groupKey] = [];
+      }
+      groups[groupKey].push(row);
+    });
+
+    return Object.entries(groups).map(([groupKey, groupItems]) => {
+      const keyParts = groupKey.split(' || ');
+      const keys: Record<string, string> = {};
+      selectedRowFields.forEach((field, idx) => {
+        keys[field] = keyParts[idx] || "-";
+      });
+
+      // Calcula as agregações para este grupo plano
+      const aggregates: Record<string, number> = {};
+      selectedValues.forEach(valKey => {
+        const vals = groupItems.map(item => parseNumeric(item[valKey] || getRowValue(item, valKey)));
         
-        const isExpanded = expandedNodes[node.path];
-        if (isExpanded && node.children.length > 0) {
-          traverse(node.children);
-          
-          // Opcionalmente adiciona um nó de subtotal acumulado da linha se expandido
-          if (showTotalsOnRows && node.level < selectedRowFields.length - 1) {
-            list.push({ 
-              node: {
-                ...node,
-                keyValue: `Total ${node.keyValue}`,
-                children: [] // Sem filhos para o subtotal
-              }, 
-              isTotal: true 
-            });
-          }
+        if (aggregationType === 'SUM') {
+          aggregates[valKey] = vals.reduce((sum, v) => sum + v, 0);
+        } else if (aggregationType === 'COUNT') {
+          aggregates[valKey] = vals.length;
+        } else if (aggregationType === 'AVERAGE') {
+          const sum = vals.reduce((sum, v) => sum + v, 0);
+          aggregates[valKey] = vals.length > 0 ? sum / vals.length : 0;
         }
       });
-    };
 
-    traverse(pivotTree);
-    return list;
-  }, [pivotTree, expandedNodes, showTotalsOnRows, selectedRowFields]);
+      // Pega o ID do primeiro item do grupo para atualização da observação
+      const firstItem = groupItems[0];
+      const itemId = firstItem?.id || firstItem?.Id || "";
+      const observacao = firstItem ? getRowValue(firstItem, 'Observação') : "";
+
+      return {
+        id: itemId,
+        keys,
+        aggregates,
+        observacao,
+        items: groupItems
+      };
+    });
+  }, [filteredData, selectedRowFields, selectedValues, aggregationType]);
 
   // Totais Gerais acumulados
   const grandTotals = useMemo(() => {
@@ -273,30 +333,32 @@ export default function MateriaPrimaPivotTable({ data, onRefresh, isLoading }: M
 
   // Exportar dados atuais em formato CSV
   const exportToCSV = () => {
-    if (flatTableRows.length === 0) return;
+    if (tabularRows.length === 0) return;
     
-    // Headers de agrupamento de linhas selecionadas + valores
-    const headers = [...selectedRowFields.map(f => AVAILABLE_ROW_FIELDS.find(af => af.key === f)?.label || f), ...selectedValues];
+    // Headers de agrupamento de linhas selecionadas + observação + valores
+    const headers = [
+      ...selectedRowFields.map(f => AVAILABLE_ROW_FIELDS.find(af => af.key === f)?.label || f), 
+      "Observação",
+      ...selectedValues
+    ];
     let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
     csvContent += headers.join(";") + "\n";
 
-    flatTableRows.forEach(({ node, isTotal }) => {
+    tabularRows.forEach((row) => {
       // Cria a linha preenchida com as chaves correspondentes
-      const rowData = selectedRowFields.map((field, idx) => {
-        if (node.keyName === field) {
-          return isTotal ? `[SUBTOTAL] ${node.keyValue}` : node.keyValue;
-        }
-        // Se for descendente e estamos exibindo o detalhe, podemos deixar em branco ou repetir
-        return "";
-      });
-
+      const rowData = selectedRowFields.map((field) => row.keys[field] || "");
+      const obsData = row.observacao || "";
       // Valores numéricos correspondentes
-      const valData = selectedValues.map(v => node.aggregates[v]?.toFixed(2) || "0.00");
-      csvContent += [...rowData, ...valData].join(";") + "\n";
+      const valData = selectedValues.map(v => row.aggregates[v]?.toFixed(2) || "0.00");
+      csvContent += [...rowData, obsData, ...valData].join(";") + "\n";
     });
 
     // Adiciona Total Geral
-    const grandRow = [...selectedRowFields.map((_, i) => i === 0 ? "TOTAL GERAL" : ""), ...selectedValues.map(v => grandTotals[v]?.toFixed(2) || "0.00")];
+    const grandRow = [
+      ...selectedRowFields.map((_, i) => i === 0 ? "TOTAL GERAL" : ""), 
+      "",
+      ...selectedValues.map(v => grandTotals[v]?.toFixed(2) || "0.00")
+    ];
     csvContent += grandRow.join(";") + "\n";
 
     const encodedUri = encodeURI(csvContent);
@@ -470,8 +532,31 @@ export default function MateriaPrimaPivotTable({ data, onRefresh, isLoading }: M
       <div className="flex-1 bg-white border border-gray-200 rounded-xl shadow-sm flex flex-col overflow-hidden">
         {/* Barra superior de ações e busca */}
         <div className="p-4 border-b border-gray-200 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-gray-50">
-          <div className="flex items-center gap-2.5">
-            {!showConfigPanel && (
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <div className="flex bg-gray-200/75 p-0.5 rounded-lg border border-gray-300 shadow-inner mr-1.5">
+              <button
+                onClick={() => setViewMode('pivot')}
+                className={`px-3 py-1.5 rounded-md text-xs font-extrabold flex items-center gap-1 transition-all cursor-pointer ${
+                  viewMode === 'pivot'
+                    ? 'bg-white text-orange-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Tabela Dinâmica
+              </button>
+              <button
+                onClick={() => setViewMode('spreadsheet')}
+                className={`px-3 py-1.5 rounded-md text-xs font-extrabold flex items-center gap-1 transition-all cursor-pointer ${
+                  viewMode === 'spreadsheet'
+                    ? 'bg-white text-orange-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Planilha Completa
+              </button>
+            </div>
+
+            {!showConfigPanel && viewMode === 'pivot' && (
               <button
                 onClick={() => setShowConfigPanel(true)}
                 className="bg-white border border-gray-300 hover:bg-gray-100 text-gray-700 p-2 rounded-lg flex items-center gap-1.5 transition-colors shadow-sm text-xs font-bold cursor-pointer"
@@ -482,24 +567,26 @@ export default function MateriaPrimaPivotTable({ data, onRefresh, isLoading }: M
               </button>
             )}
             
-            <div className="flex border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm">
-              <button 
-                onClick={() => toggleAllNodes(true)}
-                className="p-2 border-r border-gray-200 hover:bg-gray-50 text-gray-600 font-bold text-xs flex items-center gap-1"
-                title="Expandir todos os níveis"
-              >
-                <Maximize2 size={13} />
-                Expandir Tudo
-              </button>
-              <button 
-                onClick={() => toggleAllNodes(false)}
-                className="p-2 hover:bg-gray-50 text-gray-600 font-bold text-xs flex items-center gap-1"
-                title="Recolher todos os níveis"
-              >
-                <Minimize2 size={13} />
-                Recolher Tudo
-              </button>
-            </div>
+            {viewMode === 'pivot' && (
+              <div className="flex border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm">
+                <button 
+                  onClick={() => toggleAllNodes(true)}
+                  className="p-2 border-r border-gray-200 hover:bg-gray-50 text-gray-600 font-bold text-xs flex items-center gap-1"
+                  title="Expandir todos os níveis"
+                >
+                  <Maximize2 size={13} />
+                  Expandir Tudo
+                </button>
+                <button 
+                  onClick={() => toggleAllNodes(false)}
+                  className="p-2 hover:bg-gray-50 text-gray-600 font-bold text-xs flex items-center gap-1"
+                  title="Recolher todos os níveis"
+                >
+                  <Minimize2 size={13} />
+                  Recolher Tudo
+                </button>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2 w-full md:w-auto">
@@ -516,7 +603,7 @@ export default function MateriaPrimaPivotTable({ data, onRefresh, isLoading }: M
 
             <button
               onClick={exportToCSV}
-              disabled={flatTableRows.length === 0}
+              disabled={tabularRows.length === 0}
               className="bg-white hover:bg-gray-100 text-slate-800 border border-gray-300 p-2 rounded-lg flex items-center justify-center transition-colors shadow-sm cursor-pointer disabled:opacity-50"
               title="Exportar Tabela Dinâmica para CSV"
             >
@@ -547,9 +634,123 @@ export default function MateriaPrimaPivotTable({ data, onRefresh, isLoading }: M
           </div>
         </div>
 
-        {/* Grid / Tabela Pivot */}
+        {/* Grid / Tabela */}
         <div className="flex-1 overflow-auto custom-scrollbar">
-          {flatTableRows.length === 0 ? (
+          {viewMode === 'spreadsheet' ? (
+            <div className="p-3 bg-slate-50 min-h-full">
+              <div className="border border-gray-200 rounded-lg overflow-auto bg-white shadow-sm max-h-[600px]">
+                <table className="w-full border-collapse text-[11px] text-left min-w-[2000px] select-text">
+                  <thead>
+                    <tr className="bg-slate-100 text-slate-700 font-extrabold border-b border-gray-300 uppercase sticky top-0 z-20">
+                      <th className="p-2.5 border border-gray-200 text-center sticky left-0 bg-slate-100 z-30 w-12 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">N°</th>
+                      <th className="p-2.5 border border-gray-200">ID</th>
+                      <th className="p-2.5 border border-gray-200">Produto</th>
+                      <th className="p-2.5 border border-gray-200">Descrição produto</th>
+                      <th className="p-2.5 border border-gray-200">Tamanho</th>
+                      <th className="p-2.5 border border-gray-200">Semana</th>
+                      <th className="p-2.5 border border-gray-200">Modelo</th>
+                      <th className="p-2.5 border border-gray-200 text-center">Legenda</th>
+                      <th className="p-2.5 border border-gray-200">Documento</th>
+                      <th className="p-2.5 border border-gray-200">OP</th>
+                      <th className="p-2.5 border border-gray-200 text-right">Reserva</th>
+                      <th className="p-2.5 border border-gray-200 text-right">Qtd. estoque</th>
+                      <th className="p-2.5 border border-gray-200 text-right">Saldo</th>
+                      <th className="p-2.5 border border-gray-200 text-right">Qtde. OC</th>
+                      <th className="p-2.5 border border-gray-200 text-right">Qtde. EDI</th>
+                      <th className="p-2.5 border border-gray-200">Nota EDI</th>
+                      <th className="p-2.5 border border-gray-200">Nome fornecedor</th>
+                      <th className="p-2.5 border border-gray-200 min-w-[260px] bg-amber-50/50">Observação (pode escrever)</th>
+                      <th className="p-2.5 border border-gray-200">Dt.ent.Dass</th>
+                      <th className="p-2.5 border border-gray-200">Dt. ETD</th>
+                      <th className="p-2.5 border border-gray-200">Dt. emissão NF</th>
+                      <th className="p-2.5 border border-gray-200">Localização</th>
+                      <th className="p-2.5 border border-gray-200">Dt. leitura NF</th>
+                      <th className="p-2.5 border border-gray-200">OC</th>
+                      <th className="p-2.5 border border-gray-200">Und.</th>
+                      <th className="p-2.5 border border-gray-200">Motorista</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {filteredData.map((row, idx) => {
+                      const legenda = getRowValue(row, 'Legenda');
+                      const isSemEstoque = legenda === 'SEM ESTOQUE';
+                      const isFaturado = legenda === 'FATURADO';
+                      const isEstoque = legenda === 'ESTOQUE';
+
+                      let badgeClass = "bg-gray-100 text-gray-700 border-gray-300";
+                      if (isSemEstoque) {
+                        badgeClass = "bg-red-50 text-red-700 border-red-200 font-bold";
+                      } else if (isFaturado) {
+                        badgeClass = "bg-green-50 text-green-700 border-green-200 font-bold";
+                      } else if (isEstoque) {
+                        badgeClass = "bg-blue-50 text-blue-700 border-blue-200 font-bold";
+                      }
+
+                      return (
+                        <tr key={row.id || idx} className="hover:bg-slate-50 transition-colors">
+                          <td className="p-2 border border-gray-200 text-center font-bold text-gray-500 bg-slate-50 sticky left-0 z-10 w-12 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                            {idx + 1}
+                          </td>
+                          <td className="p-2 border border-gray-200 text-gray-400 font-mono truncate max-w-[80px]" title={row['Id'] || row.id}>
+                            {row['Id'] || row.id || `m-${idx}`}
+                          </td>
+                          <td className="p-2 border border-gray-200 font-bold text-gray-900 font-mono">
+                            {row['Produto']}
+                          </td>
+                          <td className="p-2 border border-gray-200 font-medium text-gray-700 truncate max-w-sm" title={row['Descrição produto'] || row['Descrição'] || row['Descrição do Material']}>
+                            {row['Descrição produto'] || row['Descrição'] || row['Descrição do Material']}
+                          </td>
+                          <td className="p-2 border border-gray-200 font-mono text-gray-600">{row['Tamanho'] || '0'}</td>
+                          <td className="p-2 border border-gray-200 font-mono text-gray-600">{row['Semana']}</td>
+                          <td className="p-2 border border-gray-200 text-gray-700 font-medium">{row['Modelo']}</td>
+                          <td className="p-2 border border-gray-200 text-center">
+                            <span className={`px-2 py-0.5 rounded text-[10px] uppercase border tracking-wider ${badgeClass}`}>
+                              {legenda}
+                            </span>
+                          </td>
+                          <td className="p-2 border border-gray-200 font-mono text-gray-600">{row['Documento']}</td>
+                          <td className="p-2 border border-gray-200 font-mono text-gray-600">{row['OP']}</td>
+                          <td className="p-2 border border-gray-200 text-right font-mono font-medium text-gray-600">
+                            {parseNumeric(row['Reserva']).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td className={`p-2 border border-gray-200 text-right font-mono font-bold ${isSemEstoque ? 'text-red-600' : 'text-gray-900'}`}>
+                            {parseNumeric(row['Qtd. estoque']).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td className="p-2 border border-gray-200 text-right font-mono font-semibold text-slate-800">
+                            {parseNumeric(row['Saldo']).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td className="p-2 border border-gray-200 text-right font-mono text-gray-500">
+                            {parseNumeric(row['Qtd. OC'] || row['Qtde. OC']).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td className="p-2 border border-gray-200 text-right font-mono text-gray-500">
+                            {parseNumeric(row['Qtd. EDI'] || row['Qtde. EDI']).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td className="p-2 border border-gray-200 text-gray-400 font-mono">{row['Nota EDI'] || '-'}</td>
+                          <td className="p-2 border border-gray-200 text-gray-600 truncate max-w-xs" title={row['Nome fornecedor'] || row['Fornecedor']}>
+                            {row['Nome fornecedor'] || row['Fornecedor']}
+                          </td>
+                          <td className="p-1 border border-gray-200 bg-amber-50/25 min-w-[260px]">
+                            <SpreadsheetInput 
+                              value={row['Observação'] || ''} 
+                              onChange={(text) => onUpdateObservacao?.(row.id, text)} 
+                            />
+                          </td>
+                          <td className="p-2 border border-gray-200 text-gray-400 font-mono">{row['Dt.ent.Dass'] || '-'}</td>
+                          <td className="p-2 border border-gray-200 text-gray-400 font-mono">{row['Dt. ETD'] || '-'}</td>
+                          <td className="p-2 border border-gray-200 text-gray-400 font-mono">{row['Dt. emissão NF'] || '-'}</td>
+                          <td className="p-2 border border-gray-200 text-gray-500 font-medium">{row['Localização'] || '-'}</td>
+                          <td className="p-2 border border-gray-200 text-gray-400 font-mono">{row['Dt. leitura NF'] || '-'}</td>
+                          <td className="p-2 border border-gray-200 text-gray-500 font-mono">{row['OC'] || '-'}</td>
+                          <td className="p-2 border border-gray-200 font-mono text-gray-600 font-semibold">{row['Und.'] || row['Unidade'] || 'M²'}</td>
+                          <td className="p-2 border border-gray-200 text-gray-500 font-medium">{row['Motorista'] || '-'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : tabularRows.length === 0 ? (
             <div className="p-16 text-center text-gray-400">
               <FileSpreadsheet size={48} className="mx-auto mb-3 text-gray-300" />
               <p className="text-sm font-bold">Nenhum agrupamento configurado ou nenhum dado disponível.</p>
@@ -559,8 +760,23 @@ export default function MateriaPrimaPivotTable({ data, onRefresh, isLoading }: M
             <table className="w-full border-collapse text-left text-xs min-w-[700px] select-text">
               <thead>
                 <tr className="bg-slate-100 border-b border-gray-300 text-slate-700 font-extrabold uppercase">
+                  {/* Coluna de index sutil */}
+                  <th className="p-3 border-r border-gray-200 w-12 text-center text-slate-500">N°</th>
+
                   {/* Cabeçalhos de Grupos de Linhas */}
-                  <th className="p-3 border-r border-gray-200">Hierarquia de Agrupamento</th>
+                  {selectedRowFields.map(fieldKey => {
+                    const info = AVAILABLE_ROW_FIELDS.find(af => af.key === fieldKey);
+                    return (
+                      <th key={fieldKey} className="p-3 border-r border-gray-200">
+                        {info?.label || fieldKey}
+                      </th>
+                    );
+                  })}
+
+                  {/* Coluna de Observação */}
+                  <th className="p-3 border-r border-gray-200 w-64 bg-amber-50/20">
+                    Observação (pode escrever)
+                  </th>
                   
                   {/* Cabeçalhos de Valores agregados */}
                   {selectedValues.map(v => {
@@ -575,59 +791,60 @@ export default function MateriaPrimaPivotTable({ data, onRefresh, isLoading }: M
                 </tr>
               </thead>
               <tbody>
-                {flatTableRows.map(({ node, isTotal }, index) => {
-                  const isExpanded = expandedNodes[node.path];
-                  const hasChildren = node.children.length > 0;
-                  
-                  // Estilização com base no nível na hierarquia e se é subtotal
-                  const indentStyle = { paddingLeft: `${node.level * 20 + 12}px` };
-                  const rowBg = isTotal 
-                    ? 'bg-slate-50 font-bold border-b border-gray-200 text-slate-900' 
-                    : node.level === 0 
-                      ? 'bg-gray-50/50 hover:bg-gray-100/60 font-semibold text-slate-800' 
-                      : 'hover:bg-gray-50/60 text-slate-700 border-b border-gray-100';
-
+                {tabularRows.map((row, index) => {
                   return (
                     <tr 
-                      key={`${node.path}-${index}`} 
-                      className={`border-b border-gray-200 transition-colors ${rowBg}`}
+                      key={row.id || index} 
+                      className="border-b border-gray-200 hover:bg-slate-50/80 transition-colors"
                     >
-                      {/* Célula de Agrupamento de Linha */}
-                      <td className="p-2.5 border-r border-gray-200 font-sans truncate max-w-md" style={indentStyle}>
-                        <div className="flex items-center gap-1.5">
-                          {hasChildren && !isTotal ? (
-                            <button
-                              onClick={() => toggleNode(node.path)}
-                              className="p-1 rounded hover:bg-gray-200/80 transition-colors focus:outline-none"
-                            >
-                              {isExpanded ? (
-                                <ChevronDown size={14} className="text-slate-600 stroke-[3]" />
-                              ) : (
-                                <ChevronRight size={14} className="text-slate-600 stroke-[3]" />
-                              )}
-                            </button>
-                          ) : (
-                            <span className="w-6 inline-block" /> // Alinhamento vazio para folhas
-                          )}
-                          
-                          <span 
-                            className={`truncate ${isTotal ? 'italic text-slate-500 font-bold' : node.level === 0 ? 'font-extrabold text-slate-950' : 'font-medium'}`}
-                            title={`${node.keyName}: ${node.keyValue}`}
-                          >
-                            {node.keyValue || <span className="text-gray-400 italic">[Vazio]</span>}
-                          </span>
-                        </div>
+                      {/* Index da Linha */}
+                      <td className="p-2 border-r border-gray-200 text-center font-bold text-gray-400 bg-slate-50/50 w-12">
+                        {index + 1}
+                      </td>
+
+                      {/* Células de Grupos de Linhas (Documento, Produto, Descrição, etc.) */}
+                      {selectedRowFields.map((fieldKey, colIdx) => {
+                        const cellValue = row.keys[fieldKey] || "-";
+                        
+                        const isDocumento = fieldKey === 'Documento';
+                        const isProduto = fieldKey === 'Produto';
+                        const isDescricao = fieldKey === 'Descrição produto';
+                        
+                        let cellClass = "p-2.5 border-r border-gray-200 font-sans truncate max-w-xs";
+                        if (isDocumento) {
+                          cellClass += " bg-slate-100/60 font-bold text-slate-700";
+                        } else if (isProduto) {
+                          cellClass += " font-mono font-bold text-slate-950";
+                        } else if (isDescricao) {
+                          cellClass += " text-slate-800 font-medium max-w-sm";
+                        } else {
+                          cellClass += " text-slate-600 font-medium";
+                        }
+
+                        return (
+                          <td key={fieldKey} className={cellClass} title={cellValue}>
+                            {cellValue}
+                          </td>
+                        );
+                      })}
+
+                      {/* Coluna de Observação editável */}
+                      <td className="p-1 border-r border-gray-200 bg-amber-50/10 min-w-[240px]">
+                        {row.id ? (
+                          <SpreadsheetInput 
+                            value={row.observacao || ''} 
+                            onChange={(text) => onUpdateObservacao?.(row.id, text)} 
+                          />
+                        ) : null}
                       </td>
 
                       {/* Células de Valores agregados */}
                       {selectedValues.map(v => {
-                        const val = node.aggregates[v] ?? 0;
+                        const val = row.aggregates[v] ?? 0;
                         return (
                           <td 
                             key={v} 
-                            className={`p-2.5 text-right font-mono border-r border-gray-200 ${
-                              isTotal || node.level === 0 ? 'font-bold text-slate-900' : 'text-slate-700'
-                            }`}
+                            className="p-2.5 text-right font-mono border-r border-gray-200 text-slate-800 font-semibold"
                           >
                             {aggregationType === 'COUNT' ? val : val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
@@ -638,14 +855,23 @@ export default function MateriaPrimaPivotTable({ data, onRefresh, isLoading }: M
                 })}
 
                 {/* Linha de Total Geral */}
-                <tr className="bg-slate-800 text-white font-extrabold text-xs">
-                  <td className="p-3 border-r border-slate-700 uppercase">
-                    Total Geral
+                <tr className="bg-slate-800 text-white font-extrabold text-xs sticky bottom-0 z-10">
+                  <td className="p-3 border-r border-slate-700 text-center font-bold">
+                    -
                   </td>
+
+                  {selectedRowFields.map((fieldKey, colIdx) => (
+                    <td key={fieldKey} className="p-3 border-r border-slate-700 uppercase">
+                      {colIdx === 0 ? "Total Geral" : ""}
+                    </td>
+                  ))}
+                  
+                  <td className="p-3 border-r border-slate-700"></td>
+
                   {selectedValues.map(v => {
                     const val = grandTotals[v] ?? 0;
                     return (
-                      <td key={v} className="p-3 text-right font-mono border-r border-slate-700">
+                      <td key={v} className="p-3 text-right font-mono border-r border-slate-700 text-amber-300 font-bold">
                         {aggregationType === 'COUNT' ? val : val.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
                     );

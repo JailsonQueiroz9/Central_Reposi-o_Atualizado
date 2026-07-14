@@ -315,18 +315,30 @@ function deleteMultiplePainelData(dataArray) {
 }
 
 function getMaterialByProduto(data) {
-  var materias = getSheetData('Follow Material Prima');
-  if (!materias || materias.length === 0) {
-    materias = getSheetData('Matérias');
-  }
   var searchTerm = String(data.produto).trim().toLowerCase();
   
-  for (var i = 0; i < materias.length; i++) {
-    var prod = String(materias[i]['Produto'] || materias[i]['PRODUTO'] || materias[i]['produto'] || '').trim().toLowerCase();
-    if (prod === searchTerm) {
-      return materias[i];
+  // 1. Procurar primeiro na aba 'Follow Material Prima'
+  var materiasFollow = getSheetData('Follow Material Prima');
+  if (materiasFollow && materiasFollow.length > 0) {
+    for (var i = 0; i < materiasFollow.length; i++) {
+      var prod = String(materiasFollow[i]['Produto'] || materiasFollow[i]['PRODUTO'] || materiasFollow[i]['produto'] || '').trim().toLowerCase();
+      if (prod === searchTerm) {
+        return materiasFollow[i];
+      }
     }
   }
+  
+  // 2. Se não encontrou, procurar na aba 'Matérias'
+  var materiasMain = getSheetData('Matérias');
+  if (materiasMain && materiasMain.length > 0) {
+    for (var i = 0; i < materiasMain.length; i++) {
+      var prod = String(materiasMain[i]['Produto'] || materiasMain[i]['PRODUTO'] || materiasMain[i]['produto'] || '').trim().toLowerCase();
+      if (prod === searchTerm) {
+        return materiasMain[i];
+      }
+    }
+  }
+  
   throw new Error("Material não encontrado");
 }
 
