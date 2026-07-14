@@ -262,6 +262,7 @@ export default function MateriaPrimaPivotTable({ data, onRefresh, isLoading, onU
 
       return {
         id: itemId,
+        groupKey,
         keys,
         aggregates,
         observacao,
@@ -794,7 +795,7 @@ export default function MateriaPrimaPivotTable({ data, onRefresh, isLoading, onU
                 {tabularRows.map((row, index) => {
                   return (
                     <tr 
-                      key={row.id || index} 
+                      key={`${row.groupKey}-${index}`} 
                       className="border-b border-gray-200 hover:bg-slate-50/80 transition-colors"
                     >
                       {/* Index da Linha */}
