@@ -233,7 +233,7 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
       const data = await api.post('getMateriasData');
       if (Array.isArray(data)) {
         const normalized = data.map((item: any, idx: number) => {
-          const id = item.id || item.ID || item.Produto || `materia-${idx}`;
+          const id = item.id || item.ID || (item.Documento ? `doc_${item.Documento}_${item.Produto || idx}` : '') || `materia-${idx}`;
           return {
             ...item,
             id: String(id)
@@ -911,7 +911,15 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
 
   const handleUpdateMateriaObservacao = async (id: string, text: string) => {
     try {
-      setMateriaisList(prev => prev.map(m => m.id === id ? { ...m, 'Observação': text } : m));
+      let updatedItem: any = null;
+      setMateriaisList(prev => prev.map(m => {
+        if (m.id === id) {
+          updatedItem = { ...m, 'Observação': text };
+          return updatedItem;
+        }
+        return m;
+      }));
+
       const stored = localStorage.getItem('pcp_materias_data');
       if (stored) {
         let list = JSON.parse(stored);
@@ -922,6 +930,10 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
           return item;
         });
         localStorage.setItem('pcp_materias_data', JSON.stringify(list));
+      }
+
+      if (updatedItem) {
+        await api.post('saveMateriaData', updatedItem);
       }
     } catch (err) {
       console.error('Erro ao atualizar observação da matéria-prima:', err);
