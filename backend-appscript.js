@@ -1,9 +1,23 @@
 function doPost(e) {
   try {
     var body = JSON.parse(e.postData.contents);
-    var action = body.action;
-    var data = body.data;
+    var action = body.action || '';
+    var data = body.data || {};
     var result = null;
+
+    // Normalização da ação para garantir compatibilidade entre versões da API
+    var actionNormalized = String(action).toUpperCase().trim();
+    if (actionNormalized === 'CREATE' || actionNormalized === 'UPDATE') actionNormalized = 'SAVE';
+    if (actionNormalized === 'READ') actionNormalized = 'GET';
+
+    // Mapeamento compatível para as ações legadas e novas
+    if (actionNormalized === 'UPLOAD' || actionNormalized === 'UPLOAD_PDF' || actionNormalized === 'UPLOADFILETODRIVE') {
+      action = 'uploadFileToDrive';
+    } else if (actionNormalized === 'BUSCAR_DOCUMENTOS' || actionNormalized === 'BUSCARDOCUMENTOSPORNOTAFISCAL') {
+      action = 'buscarDocumentosPorNotaFiscal';
+    } else if (actionNormalized === 'STATUS_BUSCA' || actionNormalized === 'OBTERSTATUSBUSCA') {
+      action = 'statusBusca';
+    }
 
     switch (action) {
       case 'login':
@@ -78,6 +92,20 @@ function doPost(e) {
       case 'deleteAwbData':
         result = deleteAwbData(data);
         break;
+      case 'uploadFileToDrive':
+        // Oferece suporte para as duas estruturas de parâmetros
+        var uploadPayload = {
+          filename: data.filename || data.fileName || 'arquivo.pdf',
+          base64Data: data.base64Data || data.base64 || data.base64Data
+        };
+        result = uploadFileToDrive(uploadPayload);
+        break;
+      case 'buscarDocumentosPorNotaFiscal':
+        result = buscarDocumentosPorNotaFiscal();
+        break;
+      case 'statusBusca':
+        result = { status: obterStatusBusca() };
+        break;
       case 'getParametros':
         result = getParametros();
         break;
@@ -110,6 +138,7 @@ function doGet(e) {
 // ==========================================
 
 function login(data) {
+  data = data || {};
   var users = getSheetData('Cadastro de usuário');
   for (var i = 0; i < users.length; i++) {
     // As colunas na planilha são: ID, USUÁRIO, E-MAIL, SENHA, PAPEL, STATUS
@@ -130,6 +159,7 @@ function login(data) {
 }
 
 function register(data) {
+  data = data || {};
   var users = getSheetData('Cadastro de usuário');
   for (var i = 0; i < users.length; i++) {
     if (users[i]['E-MAIL'] === data.email) {
@@ -163,8 +193,9 @@ function register(data) {
 }
 
 function getUserByCracha(data) {
+  data = data || {};
   var users = getSheetData('Usuário (cracha)');
-  var searchTerm = String(data.cracha).trim();
+  var searchTerm = String(data.cracha || '').trim();
   
   for (var i = 0; i < users.length; i++) {
     // Busca pelo CRACHA ou CHAPA
@@ -180,6 +211,7 @@ function getUsers() {
 }
 
 function addUser(data) {
+  data = data || {};
   var users = getSheetData('Cadastro de usuário');
   for (var i = 0; i < users.length; i++) {
     if (users[i]['E-MAIL'] === data.email) {
@@ -218,6 +250,7 @@ function addUser(data) {
 }
 
 function updateUser(data) {
+  data = data || {};
   var id = data.id || data.ID;
   if (!id) throw new Error("ID do usuário não fornecido");
   
@@ -252,27 +285,270 @@ function getAwbData() {
     } else if (!list[i]['DocList']) {
       list[i]['DocList'] = [];
     }
+    
+    // Parse DriveUrls if present
+    var driveUrlsVal = list[i]['DriveUrls'] || list[i]['driveUrls'] || '';
+    if (typeof driveUrlsVal === 'string' && driveUrlsVal.trim()) {
+      try {
+        list[i]['DriveUrls'] = JSON.parse(driveUrlsVal);
+      } catch (e) {
+        list[i]['DriveUrls'] = {};
+      }
+    } else if (!list[i]['DriveUrls']) {
+      list[i]['DriveUrls'] = {};
+    }
+
+    // Parse FileBinariesInfo if present
+    var fileBinariesInfoVal = list[i]['FileBinariesInfo'] || list[i]['fileBinariesInfo'] || '';
+    if (typeof fileBinariesInfoVal === 'string' && fileBinariesInfoVal.trim()) {
+      try {
+        list[i]['FileBinariesInfo'] = JSON.parse(fileBinariesInfoVal);
+      } catch (e) {
+        list[i]['FileBinariesInfo'] = {};
+      }
+    } else if (!list[i]['FileBinariesInfo']) {
+      list[i]['FileBinariesInfo'] = {};
+    }
+
+    // Parse FileBinaries if present
+    var fileBinariesVal = list[i]['FileBinaries'] || list[i]['fileBinaries'] || '';
+    if (typeof fileBinariesVal === 'string' && fileBinariesVal.trim()) {
+      try {
+        list[i]['FileBinaries'] = JSON.parse(fileBinariesVal);
+      } catch (e) {
+        list[i]['FileBinaries'] = {};
+      }
+    } else if (!list[i]['FileBinaries']) {
+      list[i]['FileBinaries'] = {};
+    }
   }
   return list;
 }
 
 function saveAwbData(data) {
-  var id = data.id;
+  data = data || {};
+  var id = data.id || data.ID;
   
   var formattedData = {};
   for (var key in data) {
     formattedData[key] = data[key];
   }
+  
+  // Limpa o FileBinaries gigante para evitar estourar o limite de 50.000 caracteres das células do Sheets
+  formattedData['FileBinaries'] = '{}';
+  
   if (Array.isArray(formattedData['DocList'])) {
     formattedData['DocList'] = JSON.stringify(formattedData['DocList']);
   }
-  
-  if (id) {
-    return updateRow('Follow-Up AWB', id, formattedData);
-  } else {
-    formattedData.id = Utilities.getUuid();
-    return appendRow('Follow-Up AWB', formattedData);
+  if (formattedData['DriveUrls'] && typeof formattedData['DriveUrls'] === 'object') {
+    formattedData['DriveUrls'] = JSON.stringify(formattedData['DriveUrls']);
   }
+  if (formattedData['FileBinariesInfo'] && typeof formattedData['FileBinariesInfo'] === 'object') {
+    formattedData['FileBinariesInfo'] = JSON.stringify(formattedData['FileBinariesInfo']);
+  }
+  
+  // Captura dinâmica de parâmetros de e-mail enviados pelo formulário React
+  var sendEmail = data.send_email || data.sendEmail;
+  var emailTo = data.email_to || data.emailTo;
+  var emailCc = data.email_cc || data.emailCc;
+  var emailBcc = data.email_bcc || data.emailBcc;
+  var emailBody = data.email_body || data.emailBody;
+  
+  // Limpeza de payload antes de salvar na tabela para não encher com campos auxiliares
+  var cleanPayload = {};
+  for (var k in formattedData) {
+    if (['send_email', 'sendEmail', 'email_to', 'emailTo', 'email_cc', 'emailCc', 'email_bcc', 'emailBcc', 'email_body', 'emailBody'].indexOf(k) === -1) {
+      cleanPayload[k] = formattedData[k];
+    }
+  }
+  
+  var result;
+  if (id) {
+    result = updateRow('Follow-Up AWB', id, cleanPayload);
+  } else {
+    cleanPayload.id = Utilities.getUuid();
+    result = appendRow('Follow-Up AWB', cleanPayload);
+  }
+  
+  // Dispara o envio de e-mail se solicitado
+  if (sendEmail && emailTo) {
+    try {
+      enviarEmailPersonalizado(cleanPayload, emailTo, emailCc, emailBcc, emailBody, 'Follow-Up AWB');
+    } catch (e) {
+      console.error("❌ Falha no envio do e-mail:", e.toString());
+    }
+  }
+  
+  // Busca automática de PDFs baseados em Notas Fiscais
+  try {
+    buscarDocumentosPorNotaFiscal();
+  } catch (e) {
+    console.warn("⚠️ Falha na busca automática de PDFs:", e.toString());
+  }
+  
+  return result;
+}
+
+function uploadFileToDrive(data) {
+  if (!data) {
+    console.log("A função uploadFileToDrive foi executada diretamente pelo editor de scripts (sem dados).");
+    return { success: false, error: "Nenhum dado recebido. Esta função deve ser chamada pelo aplicativo." };
+  }
+  var filename = data.filename || data.fileName || 'arquivo.pdf';
+  var base64Data = data.base64Data || data.base64;
+  var folderId = "0AOXxdWFOmscbUk9PVA"; // Hardcoded Google Drive folder ID requested by user
+  
+  if (!filename || !base64Data) {
+    throw new Error("Missing filename or base64Data");
+  }
+  
+  // Se contiver o cabeçalho Data URL, remova-o
+  if (base64Data.indexOf(',') !== -1) {
+    base64Data = base64Data.split(',')[1];
+  }
+  
+  var decoded = Utilities.base64Decode(base64Data);
+  var blob = Utilities.newBlob(decoded, "application/pdf", filename);
+  
+  var folder;
+  try {
+    folder = DriveApp.getFolderById(folderId);
+  } catch (e) {
+    // Fallback: se a pasta por ID falhar (restrições ou compartilhamento), tenta localizar ou criar a pasta "PCP_PDFs" no Meu Drive
+    var folders = DriveApp.getFoldersByName("PCP_PDFs");
+    if (folders.hasNext()) {
+      folder = folders.next();
+    } else {
+      folder = DriveApp.createFolder("PCP_PDFs");
+    }
+  }
+  var file = folder.createFile(blob);
+  
+  // Define o arquivo como acessível a qualquer pessoa com o link
+  try {
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  } catch(e) {
+    // Caso ocorra algum erro por restrição de domínio, ignora
+  }
+  
+  var fileUrl = file.getUrl();
+  
+  // LOGICA PARA SALVAR O LINK DIRETAMENTE NO BANCO DE DADOS (PLANILHA GOOGLE SHEETS)
+  try {
+    var awbId = data.awbId || data.id || data.ID;
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Follow-Up AWB');
+    if (sheet) {
+      var lastRow = sheet.getLastRow();
+      if (lastRow >= 2) {
+        var dataRange = sheet.getDataRange();
+        var values = dataRange.getValues();
+        var headers = values[0];
+        
+        var idCol = headers.indexOf('id') !== -1 ? headers.indexOf('id') : headers.indexOf('ID');
+        var driveUrlsCol = headers.indexOf('DriveUrls') !== -1 ? headers.indexOf('DriveUrls') : headers.indexOf('driveUrls');
+        var docListCol = headers.indexOf('DocList') !== -1 ? headers.indexOf('DocList') : headers.indexOf('docList');
+        
+        var targetRowIndex = -1;
+        
+        // 1. Se recebemos o ID da AWB na requisição, busca por ele
+        if (awbId && idCol !== -1) {
+          for (var i = 1; i < values.length; i++) {
+            if (String(values[i][idCol]) === String(awbId)) {
+              targetRowIndex = i + 1;
+              break;
+            }
+          }
+        }
+        
+        // 2. Se não encontramos por ID, tenta buscar por Nota Fiscal / AWB contida no nome do arquivo
+        if (targetRowIndex === -1) {
+          var nfCol = headers.indexOf('NFs') !== -1 ? headers.indexOf('NFs') : headers.indexOf('NFS');
+          var awbNumCol = headers.indexOf('Awb') !== -1 ? headers.indexOf('Awb') : headers.indexOf('AWB');
+          
+          for (var i = 1; i < values.length; i++) {
+            // Verifica se a NF está contida no nome do arquivo
+            if (nfCol !== -1 && values[i][nfCol]) {
+              var nfValue = String(values[i][nfCol]).trim();
+              if (nfValue && filename.indexOf(nfValue) !== -1) {
+                targetRowIndex = i + 1;
+                break;
+              }
+            }
+            // Verifica se o número AWB está contido no nome do arquivo
+            if (awbNumCol !== -1 && values[i][awbNumCol]) {
+              var awbValue = String(values[i][awbNumCol]).trim();
+              if (awbValue && filename.indexOf(awbValue) !== -1) {
+                targetRowIndex = i + 1;
+                break;
+              }
+            }
+          }
+        }
+        
+        // Se encontramos uma linha correspondente, atualizamos suas colunas DriveUrls e DocList diretamente
+        if (targetRowIndex !== -1 && driveUrlsCol !== -1) {
+          // Atualiza DriveUrls (JSON)
+          var currentDriveUrls = {};
+          var driveUrlsCellVal = values[targetRowIndex - 1][driveUrlsCol];
+          if (driveUrlsCellVal) {
+            try {
+              currentDriveUrls = JSON.parse(driveUrlsCellVal);
+            } catch (e) {
+              currentDriveUrls = {};
+            }
+          }
+          currentDriveUrls[filename] = fileUrl;
+          sheet.getRange(targetRowIndex, driveUrlsCol + 1).setValue(JSON.stringify(currentDriveUrls));
+          
+          // Atualiza DocList (JSON ou string de nomes de arquivos)
+          var currentDocList = [];
+          if (docListCol !== -1) {
+            var docListCellVal = values[targetRowIndex - 1][docListCol];
+            if (docListCellVal) {
+              try {
+                currentDocList = JSON.parse(docListCellVal);
+                if (!Array.isArray(currentDocList)) currentDocList = [];
+              } catch (e) {
+                if (typeof docListCellVal === 'string') {
+                  currentDocList = docListCellVal.split(',').map(function(s) { return s.trim(); });
+                } else {
+                  currentDocList = [];
+                }
+              }
+            }
+            if (currentDocList.indexOf(filename) === -1) {
+              currentDocList.push(filename);
+            }
+            sheet.getRange(targetRowIndex, docListCol + 1).setValue(JSON.stringify(currentDocList));
+          }
+          
+          // Atualiza a coluna 'Docs' se houver, contendo a contagem de documentos
+          var docsCol = headers.indexOf('Docs') !== -1 ? headers.indexOf('Docs') : headers.indexOf('DOCS');
+          if (docsCol !== -1 && currentDocList) {
+            sheet.getRange(targetRowIndex, docsCol + 1).setValue(currentDocList.length);
+          }
+          
+          console.log("Banco de dados atualizado diretamente com o link do Drive para a linha: " + targetRowIndex);
+        }
+      }
+    }
+  } catch (dbErr) {
+    console.error("Erro ao atualizar banco de dados diretamente em uploadFileToDrive:", dbErr.toString());
+  }
+  
+  // 3. Executa a busca automática de PDFs baseados em Notas Fiscais para atualizar PDF_1 a PDF_11
+  try {
+    buscarDocumentosPorNotaFiscal();
+  } catch (e) {
+    console.warn("⚠️ Falha na busca automática de PDFs:", e.toString());
+  }
+  
+  return {
+    name: filename,
+    id: file.getId(),
+    url: fileUrl,
+    success: true
+  };
 }
 
 function deleteAwbData(data) {
@@ -315,7 +591,8 @@ function deleteMultiplePainelData(dataArray) {
 }
 
 function getMaterialByProduto(data) {
-  var searchTerm = String(data.produto).trim().toLowerCase();
+  data = data || {};
+  var searchTerm = String(data.produto || '').trim().toLowerCase();
   
   // 1. Procurar primeiro na aba 'Follow Material Prima'
   var materiasFollow = getSheetData('Follow Material Prima');
@@ -928,4 +1205,195 @@ function reorderRows(sheetName, idList) {
   sheet.getRange(1, 1, newValues.length, headers.length).setValues(newValues);
   
   return { success: true };
+}
+
+// ==========================================
+// INTEGRADO: MOTOR DE BUSCA DE DOCUMENTOS E E-MAIL ROBUSTO
+// ==========================================
+
+var DRIVE_CONFIG = {
+  PASTA_DOCUMENTOS: '0AOXxdWFOmscbUk9PVA',
+  COLUNA_NOTAS_FISCAIS: 4,
+  COLUNA_DOCUMENTOS: 12,
+  COLUNA_INICIO_PDFS: 15,
+  NUM_COLUNAS_PDFS: 11
+};
+
+function buscarDocumentosPorNotaFiscal() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Follow-Up AWB') || SpreadsheetApp.getActiveSpreadsheet().getSheetByName('AWB');
+  if (!sheet) return;
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+
+  var fileLinks = carregarDicionarioArquivos(DRIVE_CONFIG.PASTA_DOCUMENTOS);
+  var rangeBusca = sheet.getRange(2, 1, lastRow - 1, DRIVE_CONFIG.COLUNA_DOCUMENTOS);
+  var valoresBusca = rangeBusca.getValues();
+  var rangeLinksAtuais = sheet.getRange(2, DRIVE_CONFIG.COLUNA_INICIO_PDFS, lastRow - 1, DRIVE_CONFIG.NUM_COLUNAS_PDFS);
+  var linksAtuais = rangeLinksAtuais.getValues();
+
+  var totalLinksNovos = 0;
+
+  for (var i = 0; i < valoresBusca.length; i++) {
+    var nfTexto = String(valoresBusca[i][DRIVE_CONFIG.COLUNA_NOTAS_FISCAIS - 1]);
+    var statusDoc = String(valoresBusca[i][DRIVE_CONFIG.COLUNA_DOCUMENTOS - 1]).trim();
+
+    if (statusDoc === "" && nfTexto !== "") {
+      var nfs = nfTexto.split(/[\s\/,|-]+/).map(function(n) { return n.trim(); }).filter(function(n) { return n.length >= 3; });
+      var rowLinks = [];
+
+      for (var k = 0; k < nfs.length; k++) {
+        var nf = nfs[k];
+        for (var fileName in fileLinks) {
+          if (fileName.indexOf(nf) !== -1 && rowLinks.indexOf(fileLinks[fileName]) === -1) {
+            rowLinks.push(fileLinks[fileName]);
+            if (rowLinks.length >= DRIVE_CONFIG.NUM_COLUNAS_PDFS) break;
+          }
+        }
+      }
+
+      if (rowLinks.length > 0) {
+        for (var j = 0; j < DRIVE_CONFIG.NUM_COLUNAS_PDFS; j++) {
+          linksAtuais[i][j] = rowLinks[j] || "";
+        }
+        totalLinksNovos += rowLinks.length;
+      }
+    }
+  }
+
+  rangeLinksAtuais.setValues(linksAtuais);
+  atualizarStatusProcessamento(sheet, totalLinksNovos);
+}
+
+function carregarDicionarioArquivos(folderId) {
+  var dict = {};
+  try {
+    var files = DriveApp.getFolderById(folderId).getFilesByType(MimeType.PDF);
+    while (files.hasNext()) {
+      var f = files.next();
+      dict[f.getName()] = f.getUrl();
+    }
+  } catch (e) {
+    console.error("Erro ao carregar dicionário de arquivos:", e.toString());
+  }
+  return dict;
+}
+
+function atualizarStatusProcessamento(sheet, total) {
+  try {
+    var status = "Sincronizado: " + new Date().toLocaleString('pt-BR') + " | +" + total + " links";
+    sheet.getRange(1, DRIVE_CONFIG.COLUNA_INICIO_PDFS).setValue(status);
+  } catch (e) {
+    console.error("Erro ao atualizar status de processamento:", e.toString());
+  }
+}
+
+function obterStatusBusca() {
+  try {
+    var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Follow-Up AWB') || SpreadsheetApp.getActiveSpreadsheet().getSheetByName('AWB');
+    return sheet.getRange(1, DRIVE_CONFIG.COLUNA_INICIO_PDFS).getValue();
+  } catch (e) {
+    return "Indisponível";
+  }
+}
+
+function enviarEmailPersonalizado(awb, to, cc, bcc, customBody, sourceSheet) {
+  if (!to) return;
+
+  // Formatação de destinatários
+  if (Array.isArray(to)) to = to.join(',');
+  if (Array.isArray(cc)) cc = cc.join(',');
+  if (Array.isArray(bcc)) bcc = bcc.join(',');
+
+  var isPre = sourceSheet === 'PRÉ' || sourceSheet === 'PRÉ' || sourceSheet === 'PRE' || sourceSheet === 'PRÉ (novos)';
+  var labelId = isPre ? "NF's" : "AWB NUMBER";
+  var valueId = isPre 
+    ? (awb["NF's"] || awb.nfs || "N/A") 
+    : (awb.AWB || awb.awbNumber || "N/A");
+
+  var subject = "Relatório de Embarque - " + labelId + ": " + valueId;
+  var bodyText = customBody || awb.Observação || awb.observacao || "Sem observações adicionais.";
+  var trackingLink = "https://aereodasspcpfollow.netlify.app/";
+
+  var htmlBody = `
+    <div style="font-family: sans-serif; color: #1e293b; max-width: 600px; border: 1px solid #e2e8f0; border-radius: 20px; overflow: hidden;">
+      <div style="background-color: #2563eb; padding: 32px; color: white;">
+        <h2 style="margin: 0; font-size: 22px;">Relatório de Embarque</h2>
+        <p style="margin: 6px 0 0 0; font-size: 11px; opacity: 0.8; font-weight: bold; text-transform: uppercase;">Portal Logística PCP 2.1</p>
+      </div>
+      <div style="padding: 32px; background-color: #ffffff;">
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+          <tr><td style="padding: 12px 0; border-bottom: 1px solid #f1f5f9; font-size: 11px; font-weight: 800; color: #64748b;">${labelId}</td>
+              <td style="padding: 12px 0; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 800; color: #2563eb; font-size: 16px;">${valueId}</td></tr>
+          <tr><td style="padding: 12px 0; border-bottom: 1px solid #f1f5f9; font-size: 11px; font-weight: 800; color: #64748b;">FORNECEDOR</td>
+              <td style="padding: 12px 0; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 600;">${awb.Fornecedor || awb.fornecedor || "N/A"}</td></tr>
+          <tr><td style="padding: 12px 0; border-bottom: 1px solid #f1f5f9; font-size: 11px; font-weight: 800; color: #64748b;">STATUS</td>
+              <td style="padding: 12px 0; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 800; color: #10b981;">${awb.Status || awb.status || "Pendente"}</td></tr>
+        </table>
+        <div style="background-color: #f8fafc; padding: 24px; border-radius: 16px; border: 1px solid #e2e8f0;">
+          <h4 style="margin: 0 0 12px 0; font-size: 11px; color: #64748b; text-transform: uppercase;">Mensagem do Follow-UP</h4>
+          <p style="margin: 0; font-size: 14px; line-height: 1.6; color: #334155; white-space: pre-wrap;">${bodyText}</p>
+        </div>
+        <div style="margin-top: 24px; text-align: center;">
+          <a href="${trackingLink}" style="display: inline-block; background-color: #2563eb; color: white; padding: 14px 28px; border-radius: 12px; text-decoration: none; font-weight: 800; font-size: 12px;">ACOMPANHAR RASTREIO</a>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Processamento de Anexos
+  var attachments = [];
+  var docLinks = [];
+  
+  // Coleta links do campo "Documentos" e colunas PDF_1 a PDF_11
+  var rawDocs = awb.Documentos || awb.documentos;
+  if (rawDocs) {
+    String(rawDocs).split('|').forEach(function(l) { 
+      if (l.indexOf("http") !== -1) docLinks.push(l.trim()); 
+    });
+  }
+  
+  for (var i = 1; i <= 11; i++) {
+    var val = awb["PDF_" + i];
+    if (val && String(val).indexOf("http") !== -1) {
+      docLinks.push(String(val).trim());
+    }
+  }
+
+  // Remove duplicados de links
+  var uniqueLinks = [];
+  for (var k = 0; k < docLinks.length; k++) {
+    if (uniqueLinks.indexOf(docLinks[k]) === -1) {
+      uniqueLinks.push(docLinks[k]);
+    }
+  }
+
+  uniqueLinks.forEach(function(link) {
+    try {
+      var fileId = '';
+      if (link.indexOf("/d/") !== -1) {
+        fileId = link.split("/d/")[1].split("/")[0];
+      } else if (link.indexOf("id=") !== -1) {
+        fileId = link.split("id=")[1].split("&")[0];
+      }
+      if (fileId) {
+        attachments.push(DriveApp.getFileById(fileId).getBlob());
+      }
+    } catch (e) { 
+      console.warn("Erro ao anexar arquivo: " + link + " | Erro: " + e.toString()); 
+    }
+  });
+
+  try {
+    MailApp.sendEmail({
+      to: to, 
+      cc: cc || "", 
+      bcc: bcc || "",
+      subject: subject, 
+      htmlBody: htmlBody, 
+      attachments: attachments
+    });
+    console.log("✅ E-mail enviado com sucesso!");
+  } catch (err) {
+    console.error("❌ Erro ao enviar e-mail com MailApp:", err.toString());
+  }
 }

@@ -270,6 +270,7 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
   const [docsModalOpen, setDocsModalOpen] = useState(false);
   const [selectedDocsAwb, setSelectedDocsAwb] = useState<any | null>(null);
   const [previewedDocName, setPreviewedDocName] = useState<string | null>(null);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
 
   const closeDocsModal = () => {
     setDocsModalOpen(false);
@@ -316,104 +317,26 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
     }
   }, [previewedDocName, uploadedFilesCache, onTheFlyParsedInfo]);
 
-  // Permite ler arquivos PDF selecionados e adicionar seus nomes a DocList
-  const handlePdfUpload = (files: FileList | null, isFromAwbModal: boolean = false) => {
+  // Permite ler arquivos PDF selecionados, adicionar seus nomes a DocList e enviar para o Google Drive
+  const handlePdfUpload = async (files: FileList | null, isFromAwbModal: boolean = false) => {
     if (!files) return;
     const newFileNames: string[] = [];
+    const validFiles: File[] = [];
     
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
         newFileNames.push(file.name);
-        
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const content = e.target?.result as string;
-          setUploadedFilesCache(prev => ({
-            ...prev,
-            [file.name]: content
-          }));
-          // Persiste o PDF original no IndexedDB do navegador
-          savePdfToStorage(file.name, content);
-
-          // Extrai os dados originais do PDF em segundo plano
-          parsePdfContent(content, file.name).then((parsedData) => {
-            console.log("PDF parsed details:", parsedData);
-            
-            // Salva no cache local para uso imediato
-            setOnTheFlyParsedInfo(prev => ({
-              ...prev,
-              [file.name]: parsedData
-            }));
-
-            // Armazena no payload de envio da AWB para sincronizar com outros usuários
-            if (isFromAwbModal) {
-              setAwbForm(prev => {
-                // Auto-preenche apenas campos que estejam vazios ou padrão
-                const updatedForm = {
-                  ...prev,
-                  Fornecedor: prev.Fornecedor || parsedData.Fornecedor,
-                  NFs: prev.NFs || parsedData.NumeroNF,
-                  Awb: prev.Awb || parsedData.Awb,
-                  Material: prev.Material || parsedData.Material,
-                  Saida: prev.Saida || parsedData.DataSaida,
-                  Transportadora: parsedData.Transportadora || prev.Transportadora,
-                  Observacao: prev.Observacao ? `${prev.Observacao}\n${parsedData.Observacao}` : parsedData.Observacao,
-                  FileBinaries: {
-                    ...(prev.FileBinaries || {}),
-                    [file.name]: content
-                  },
-                  FileBinariesInfo: {
-                    ...(prev.FileBinariesInfo || {}),
-                    [file.name]: parsedData
-                  }
-                };
-                return updatedForm;
-              });
-            } else if (selectedDocsAwb) {
-              setSelectedDocsAwb((prev: any) => {
-                if (!prev) return prev;
-                const updatedBinaries = {
-                  ...(prev.FileBinaries || {}),
-                  [file.name]: content
-                };
-                
-                const updatedFileBinariesInfo = {
-                  ...(prev.FileBinariesInfo || {}),
-                  [file.name]: parsedData
-                };
-
-                const updatedDocs = Array.isArray(prev.DocList)
-                  ? (prev.DocList.includes(file.name) ? prev.DocList : [...prev.DocList, file.name])
-                  : [file.name];
-                
-                const updatedPayload = {
-                  ...prev,
-                  Fornecedor: prev.Fornecedor || parsedData.Fornecedor,
-                  NFs: prev.NFs || parsedData.NumeroNF,
-                  Awb: prev.Awb || parsedData.Awb,
-                  Material: prev.Material || parsedData.Material,
-                  DocList: updatedDocs,
-                  Docs: updatedDocs.length,
-                  FileBinaries: updatedBinaries,
-                  FileBinariesInfo: updatedFileBinariesInfo
-                };
-
-                // Envia os dados para a API (com o binário compartilhado) e atualiza estado local
-                api.post('saveAwbData', updatedPayload);
-                setAwbList((localList: any[]) => localList.map(item => item.id === prev.id ? updatedPayload : item));
-                return updatedPayload;
-              });
-            }
-          });
-        };
-        reader.readAsDataURL(file);
-      } else {
-        alert('Por favor, selecione apenas arquivos PDF.');
+        validFiles.push(file);
       }
     }
 
-    if (newFileNames.length === 0) return;
+    if (validFiles.length === 0) {
+      alert('Por favor, selecione apenas arquivos PDF.');
+      return;
+    }
+
+    setIsUploadingFile(true);
 
     if (isFromAwbModal) {
       setAwbForm(prev => ({
@@ -421,9 +344,143 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
         DocList: [...(prev.DocList || []), ...newFileNames]
       }));
     }
+
+    try {
+      const uploadPromises = validFiles.map(async (file) => {
+        return new Promise<void>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = async (e) => {
+            try {
+              const content = e.target?.result as string;
+              
+              // Salva no cache local do app
+              setUploadedFilesCache(prev => ({
+                ...prev,
+                [file.name]: content
+              }));
+              
+              // Salva no IndexedDB
+              await savePdfToStorage(file.name, content);
+
+              // 1. Faz upload para o Google Drive
+              let driveUrl = '';
+              try {
+                const driveRes = await api.post('uploadFileToDrive', { filename: file.name, base64Data: content });
+                driveUrl = driveRes?.url || '';
+                console.log("Arquivo enviado para o Google Drive:", driveRes);
+              } catch (driveErr) {
+                console.error("Erro ao enviar arquivo para o Google Drive:", driveErr);
+              }
+
+              // 2. Extrai dados do PDF
+              let parsedData: any = {};
+              try {
+                parsedData = await parsePdfContent(content, file.name);
+              } catch (parseErr) {
+                console.error("Erro ao extrair dados do PDF:", parseErr);
+              }
+
+              // 3. Atualiza os estados correspondentes
+              setOnTheFlyParsedInfo(prev => ({
+                ...prev,
+                [file.name]: parsedData
+              }));
+
+              if (isFromAwbModal) {
+                setAwbForm(prev => {
+                  const updatedDriveUrls = {
+                    ...(prev.DriveUrls || {}),
+                    ...(driveUrl ? { [file.name]: driveUrl } : {})
+                  };
+                  return {
+                    ...prev,
+                    Fornecedor: prev.Fornecedor || parsedData.Fornecedor,
+                    NFs: prev.NFs || parsedData.NumeroNF,
+                    Awb: prev.Awb || parsedData.Awb,
+                    Material: prev.Material || parsedData.Material,
+                    Saida: prev.Saida || parsedData.DataSaida,
+                    Transportadora: parsedData.Transportadora || prev.Transportadora,
+                    Observacao: prev.Observacao ? `${prev.Observacao}\n${parsedData.Observacao}` : parsedData.Observacao,
+                    FileBinaries: {
+                      ...(prev.FileBinaries || {}),
+                      [file.name]: content
+                    },
+                    FileBinariesInfo: {
+                      ...(prev.FileBinariesInfo || {}),
+                      [file.name]: parsedData
+                    },
+                    DriveUrls: updatedDriveUrls
+                  };
+                });
+              } else if (selectedDocsAwb) {
+                setSelectedDocsAwb((prev: any) => {
+                  if (!prev) return prev;
+                  const updatedBinaries = {
+                    ...(prev.FileBinaries || {}),
+                    [file.name]: content
+                  };
+                  const updatedFileBinariesInfo = {
+                    ...(prev.FileBinariesInfo || {}),
+                    [file.name]: parsedData
+                  };
+                  const updatedDocs = Array.isArray(prev.DocList)
+                    ? (prev.DocList.includes(file.name) ? prev.DocList : [...prev.DocList, file.name])
+                    : [file.name];
+                  
+                  const updatedDriveUrls = {
+                    ...(prev.DriveUrls || {}),
+                    ...(driveUrl ? { [file.name]: driveUrl } : {})
+                  };
+
+                  const updatedPayload = {
+                    ...prev,
+                    Fornecedor: prev.Fornecedor || parsedData.Fornecedor,
+                    NFs: prev.NFs || parsedData.NumeroNF,
+                    Awb: prev.Awb || parsedData.Awb,
+                    Material: prev.Material || parsedData.Material,
+                    DocList: updatedDocs,
+                    Docs: updatedDocs.length,
+                    FileBinaries: updatedBinaries,
+                    FileBinariesInfo: updatedFileBinariesInfo,
+                    DriveUrls: updatedDriveUrls
+                  };
+
+                  // Envia à API limpando o binário gigante no payload de salvamento para evitar estourar limites do Sheets
+                  const apiPayload = {
+                    ...updatedPayload,
+                    FileBinaries: {}
+                  };
+                  api.post('saveAwbData', apiPayload);
+                  setAwbList((localList: any[]) => localList.map(item => item.id === prev.id ? updatedPayload : item));
+                  return updatedPayload;
+                });
+              }
+
+              resolve();
+            } catch (err) {
+              reject(err);
+            }
+          };
+          reader.onerror = (err) => reject(err);
+          reader.readAsDataURL(file);
+        });
+      });
+
+      await Promise.all(uploadPromises);
+    } catch (err) {
+      console.error("Erro geral no processamento de PDFs:", err);
+    } finally {
+      setIsUploadingFile(false);
+    }
   };
 
   const downloadDocument = async (docName: string, awbItem: any) => {
+    // 0. Se houver link do Google Drive para o arquivo, abre diretamente em nova guia para visualização/download
+    if (awbItem && awbItem.DriveUrls && awbItem.DriveUrls[docName]) {
+      window.open(awbItem.DriveUrls[docName], '_blank');
+      return;
+    }
+
     let cachedDataUrl = uploadedFilesCache[docName];
     if (!cachedDataUrl) {
       // 1. Tenta obter do FileBinaries compartilhado no registro do AWB
@@ -696,7 +753,8 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
     DocList: [] as string[],
     Transportadora: 'LATAM',
     FileBinaries: {} as Record<string, string>,
-    FileBinariesInfo: {} as Record<string, any>
+    FileBinariesInfo: {} as Record<string, any>,
+    DriveUrls: {} as Record<string, string>
   });
 
   const fetchAwbData = async () => {
@@ -762,6 +820,7 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
       ...awbForm,
       id: editingAwb ? editingAwb.id : undefined,
       Docs: awbForm.DocList.length || 1,
+      FileBinaries: {}, // Não envia binários gigantes para a planilha (evita erros de limite de célula de 50.000 caracteres)
     };
 
     try {
@@ -809,7 +868,8 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
       DocList: ['Invoice_' + Math.floor(Math.random() * 1000000) + '.pdf', 'Packing_List.pdf'],
       Transportadora: 'LATAM',
       FileBinaries: {},
-      FileBinariesInfo: {}
+      FileBinariesInfo: {},
+      DriveUrls: {}
     });
     setIsAwbModalOpen(true);
   };
@@ -848,7 +908,8 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
       DocList: Array.isArray(item.DocList) ? item.DocList : ['Invoice_Anexo.pdf'],
       Transportadora: defaultTransportadora,
       FileBinaries: item.FileBinaries || {},
-      FileBinariesInfo: item.FileBinariesInfo || {}
+      FileBinariesInfo: item.FileBinariesInfo || {},
+      DriveUrls: item.DriveUrls || {}
     });
     setIsAwbModalOpen(true);
   };
@@ -2450,27 +2511,48 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
                   {/* Lista de Arquivos já anexados no formulário */}
                   {awbForm.DocList && awbForm.DocList.length > 0 && (
                     <div className="space-y-1.5 max-h-[120px] overflow-y-auto custom-scrollbar mb-2">
-                      {awbForm.DocList.map((docName, idx) => (
-                        <div key={idx} className="flex justify-between items-center bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs">
-                          <div className="flex items-center gap-1.5 overflow-hidden">
-                            <FileText size={14} className="text-blue-600 shrink-0" />
-                            <span className="font-medium text-slate-800 truncate" title={docName}>{docName}</span>
+                      {awbForm.DocList.map((docName, idx) => {
+                        const hasDriveUrl = awbForm.DriveUrls && awbForm.DriveUrls[docName];
+                        return (
+                          <div key={idx} className="flex justify-between items-center bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs">
+                            <div className="flex items-center gap-1.5 overflow-hidden mr-2">
+                              <FileText size={14} className="text-blue-600 shrink-0" />
+                              <span className="font-medium text-slate-800 truncate" title={docName}>{docName}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {hasDriveUrl && (
+                                <a
+                                  href={awbForm.DriveUrls[docName]}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-indigo-600 hover:text-indigo-800 p-1 rounded hover:bg-indigo-50 transition-colors flex items-center gap-0.5"
+                                  title="Ver no Google Drive"
+                                >
+                                  <ExternalLink size={12} />
+                                </a>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setAwbForm(prev => {
+                                    const updatedDriveUrls = { ...(prev.DriveUrls || {}) };
+                                    delete updatedDriveUrls[docName];
+                                    return {
+                                      ...prev,
+                                      DocList: prev.DocList.filter((_, i) => i !== idx),
+                                      DriveUrls: updatedDriveUrls
+                                    };
+                                  });
+                                }}
+                                className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50 transition-colors cursor-pointer shrink-0"
+                                title="Remover anexo"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setAwbForm(prev => ({
-                                ...prev,
-                                DocList: prev.DocList.filter((_, i) => i !== idx)
-                              }));
-                            }}
-                            className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50 transition-colors cursor-pointer shrink-0"
-                            title="Remover anexo"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
 
@@ -2492,20 +2574,28 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
                         : 'border-slate-300 bg-slate-50/50 hover:bg-slate-50 hover:border-slate-400'
                     }`}
                   >
-                    <label className="cursor-pointer flex flex-col items-center justify-center gap-1">
-                      <UploadCloud className={`w-8 h-8 ${isDraggingPdf ? 'text-blue-500 animate-bounce' : 'text-slate-400'}`} />
-                      <span className="text-xs font-semibold text-slate-700">
-                        {isDraggingPdf ? 'Solte seus PDFs aqui!' : 'Arraste ou clique para enviar PDF'}
-                      </span>
-                      <span className="text-[10px] text-slate-400">Apenas arquivos .pdf</span>
-                      <input
-                        type="file"
-                        accept="application/pdf"
-                        multiple
-                        className="hidden"
-                        onChange={(e) => handlePdfUpload(e.target.files, true)}
-                      />
-                    </label>
+                    {isUploadingFile ? (
+                      <div className="flex flex-col items-center justify-center gap-2 py-4">
+                        <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                        <span className="text-xs font-bold text-blue-600">Enviando PDF para o Google Drive...</span>
+                        <span className="text-[10px] text-slate-400">Extraindo dados do documento</span>
+                      </div>
+                    ) : (
+                      <label className="cursor-pointer flex flex-col items-center justify-center gap-1">
+                        <UploadCloud className={`w-8 h-8 ${isDraggingPdf ? 'text-blue-500 animate-bounce' : 'text-slate-400'}`} />
+                        <span className="text-xs font-semibold text-slate-700">
+                          {isDraggingPdf ? 'Solte seus PDFs aqui!' : 'Arraste ou clique para enviar PDF'}
+                        </span>
+                        <span className="text-[10px] text-slate-400">Apenas arquivos .pdf</span>
+                        <input
+                          type="file"
+                          accept="application/pdf"
+                          multiple
+                          className="hidden"
+                          onChange={(e) => handlePdfUpload(e.target.files, true)}
+                        />
+                      </label>
+                    )}
                   </div>
                 </div>
 
@@ -2517,11 +2607,14 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
                   >
                     Cancelar
                   </button>
-                  <button
+                   <button
                     type="submit"
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-bold shadow-sm cursor-pointer"
+                    disabled={isUploadingFile}
+                    className={`px-4 py-2 text-white rounded-lg transition-colors font-bold shadow-sm flex items-center gap-2 ${
+                      isUploadingFile ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 cursor-pointer'
+                    }`}
                   >
-                    Salvar
+                    {isUploadingFile ? 'Enviando PDF...' : 'Salvar'}
                   </button>
                 </div>
               </form>
@@ -2726,6 +2819,20 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
                                 <span className="text-xs font-semibold text-slate-800 truncate" title={docName}>{docName}</span>
                               </div>
                               <div className="flex items-center gap-2 shrink-0">
+                                {selectedDocsAwb?.DriveUrls?.[docName] && (
+                                  <>
+                                    <a
+                                      href={selectedDocsAwb.DriveUrls[docName]}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-indigo-600 hover:text-indigo-700 text-xs font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                                    >
+                                      <ExternalLink size={13} />
+                                      Ver no Drive
+                                    </a>
+                                    <span className="text-slate-300 text-[10px]">|</span>
+                                  </>
+                                )}
                                 <button
                                   onClick={() => setPreviewedDocName(docName)}
                                   className="text-emerald-600 hover:text-emerald-700 text-xs font-bold hover:underline flex items-center gap-1 cursor-pointer"
@@ -2769,20 +2876,28 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
                               : 'border-slate-300 bg-slate-50/50 hover:bg-slate-50 hover:border-slate-400'
                           }`}
                         >
-                          <label className="cursor-pointer flex flex-col items-center justify-center gap-1">
-                            <UploadCloud className={`w-7 h-7 ${isDraggingPdf ? 'text-blue-500 animate-bounce' : 'text-slate-400'}`} />
-                            <span className="text-xs font-semibold text-slate-700">
-                              {isDraggingPdf ? 'Solte seus PDFs aqui!' : 'Arraste ou clique para anexar PDF'}
-                            </span>
-                            <span className="text-[10px] text-slate-400">O arquivo será anexado a este embarque</span>
-                            <input
-                              type="file"
-                              accept="application/pdf"
-                              multiple
-                              className="hidden"
-                              onChange={(e) => handlePdfUpload(e.target.files, false)}
-                            />
-                          </label>
+                          {isUploadingFile ? (
+                            <div className="flex flex-col items-center justify-center gap-2 py-2">
+                              <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                              <span className="text-xs font-bold text-blue-600">Enviando documento para o Google Drive...</span>
+                              <span className="text-[10px] text-slate-400">Processando e extraindo dados</span>
+                            </div>
+                          ) : (
+                            <label className="cursor-pointer flex flex-col items-center justify-center gap-1">
+                              <UploadCloud className={`w-7 h-7 ${isDraggingPdf ? 'text-blue-500 animate-bounce' : 'text-slate-400'}`} />
+                              <span className="text-xs font-semibold text-slate-700">
+                                {isDraggingPdf ? 'Solte seus PDFs aqui!' : 'Arraste ou clique para anexar PDF'}
+                              </span>
+                              <span className="text-[10px] text-slate-400">O arquivo será anexado a este embarque</span>
+                              <input
+                                type="file"
+                                accept="application/pdf"
+                                multiple
+                                className="hidden"
+                                onChange={(e) => handlePdfUpload(e.target.files, false)}
+                              />
+                            </label>
+                          )}
                         </div>
                       </div>
                     )}
