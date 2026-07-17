@@ -1,0 +1,201 @@
+import express from "express";
+import path from "path";
+
+async function startServer() {
+  const app = express();
+  const PORT = 3000;
+
+  // Middleware to parse body with generous limits for files/images
+  app.use(express.json({ limit: "50mb" }));
+  app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+
+  // Helper to forward requests to the Google Apps Script Web App URL
+  const appsScriptUrl = process.env.VITE_API_URL || 
+                        process.env.VITE_APPS_SCRIPT_URL || 
+                        "https://script.google.com/macros/s/AKfycbzvlGDsADQm3iKpb5u3VYQPY4aznvNN7NS_Xc-45nasmPLqjLVtg6OZO-N0t1NK5v4Zfg/exec";
+
+  /**
+   * Generic forwarder to maintain zero downtime/perfect compatibility with current Google Apps Script sheets database
+   */
+  async function forwardToAppsScript(action: string, data: any) {
+    try {
+      const fetchUrl = `${appsScriptUrl}${appsScriptUrl.includes("?") ? "&" : "?"}ts=${Date.now()}`;
+      const response = await fetch(fetchUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/plain;charset=utf-8",
+        },
+        body: JSON.stringify({ action, data }),
+        redirect: "follow"
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP Error: ${response.status} ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      return result;
+    } catch (error: any) {
+      console.error(`[Server API Error] Action: ${action} - Error:`, error);
+      return { success: false, error: error.message || "Erro de comunicação com o servidor Google Apps Script" };
+    }
+  }
+
+  // ==========================================
+  // 🚀 PREPARED BACKEND SERVER ROUTES
+  // ==========================================
+
+  // Unified endpoint for generic front-to-back dispatching
+  app.post("/api/action", async (req, res) => {
+    const { action, data } = req.body;
+    if (!action) {
+      return res.status(400).json({ success: false, error: "Parâmetro 'action' não fornecido" });
+    }
+    const result = await forwardToAppsScript(action, data);
+    res.json(result);
+  });
+
+  // --- 1. Autenticação e Usuários (Prepared Endpoints) ---
+  app.post("/api/auth/login", async (req, res) => {
+    const result = await forwardToAppsScript("login", req.body);
+    res.json(result);
+  });
+
+  app.post("/api/users", async (req, res) => {
+    const result = await forwardToAppsScript("getUsers", req.body);
+    res.json(result);
+  });
+
+  app.post("/api/users/add", async (req, res) => {
+    const result = await forwardToAppsScript("addUser", req.body);
+    res.json(result);
+  });
+
+  app.post("/api/users/update", async (req, res) => {
+    const result = await forwardToAppsScript("updateUser", req.body);
+    res.json(result);
+  });
+
+  app.post("/api/users/by-cracha", async (req, res) => {
+    const result = await forwardToAppsScript("getUserByCracha", req.body);
+    res.json(result);
+  });
+
+  // --- 2. Painel Logístico (Prepared Endpoints) ---
+  app.post("/api/painel/get", async (req, res) => {
+    const result = await forwardToAppsScript("getPainelData", req.body);
+    res.json(result);
+  });
+
+  app.post("/api/painel/update", async (req, res) => {
+    const result = await forwardToAppsScript("updatePainelData", req.body);
+    res.json(result);
+  });
+
+  app.post("/api/painel/update-multiple", async (req, res) => {
+    const result = await forwardToAppsScript("updateMultiplePainelData", req.body);
+    res.json(result);
+  });
+
+  app.post("/api/painel/save-multiple", async (req, res) => {
+    const result = await forwardToAppsScript("saveMultiplePainelData", req.body);
+    res.json(result);
+  });
+
+  app.post("/api/painel/delete", async (req, res) => {
+    const result = await forwardToAppsScript("deletePainelData", req.body);
+    res.json(result);
+  });
+
+  app.post("/api/painel/delete-multiple", async (req, res) => {
+    const result = await forwardToAppsScript("deleteMultiplePainelData", req.body);
+    res.json(result);
+  });
+
+  // --- 3. PCP e Produção (Prepared Endpoints) ---
+  app.post("/api/pcp/save", async (req, res) => {
+    const result = await forwardToAppsScript("savePCPData", req.body);
+    res.json(result);
+  });
+
+  app.post("/api/pcp/wip", async (req, res) => {
+    const result = await forwardToAppsScript("getWipData", req.body);
+    res.json(result);
+  });
+
+  app.post("/api/pcp/reorder", async (req, res) => {
+    const result = await forwardToAppsScript("reorderPCPRows", req.body);
+    res.json(result);
+  });
+
+  app.post("/api/pcp/parametros", async (req, res) => {
+    const result = await forwardToAppsScript("getParametros", req.body);
+    res.json(result);
+  });
+
+  // --- 4. Follow-Up, AWB, Materiais e Drive (Prepared Endpoints) ---
+  app.post("/api/materials/get", async (req, res) => {
+    const result = await forwardToAppsScript("getMateriasData", req.body);
+    res.json(result);
+  });
+
+  app.post("/api/materials/by-produto", async (req, res) => {
+    const result = await forwardToAppsScript("getMaterialByProduto", req.body);
+    res.json(result);
+  });
+
+  app.post("/api/materials/save", async (req, res) => {
+    const result = await forwardToAppsScript("saveMateriaData", req.body);
+    res.json(result);
+  });
+
+  app.post("/api/materials/delete", async (req, res) => {
+    const result = await forwardToAppsScript("deleteMateriaData", req.body);
+    res.json(result);
+  });
+
+  app.post("/api/awb/get", async (req, res) => {
+    const result = await forwardToAppsScript("getAwbData", req.body);
+    res.json(result);
+  });
+
+  app.post("/api/awb/save", async (req, res) => {
+    const result = await forwardToAppsScript("saveAwbData", req.body);
+    res.json(result);
+  });
+
+  app.post("/api/awb/delete", async (req, res) => {
+    const result = await forwardToAppsScript("deleteAwbData", req.body);
+    res.json(result);
+  });
+
+  app.post("/api/drive/upload", async (req, res) => {
+    const result = await forwardToAppsScript("uploadFileToDrive", req.body);
+    res.json(result);
+  });
+
+  // ==========================================
+  // ⚡ VITE MIDDLEWARE SETUP
+  // ==========================================
+  if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), "dist");
+    app.use(express.static(distPath));
+    // Use fallback middleware to avoid path-to-regexp wildcard parsing errors in newer Express/router versions
+    app.use((req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+  }
+
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`[Server] Servidor Express ativo com sucesso na porta ${PORT}`);
+  });
+}
+
+startServer();

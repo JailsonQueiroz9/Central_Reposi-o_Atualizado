@@ -1318,7 +1318,7 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
     doc.setTextColor(255, 255, 255);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(20);
-    doc.text("DASS ITB - SOLICITAÇÃO DE COMPRA", 15, 22);
+    doc.text("DASS ITB - SOLICITAÇÃO ", 15, 22);
     
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
@@ -1654,7 +1654,7 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
                 placeholder="Buscar..." 
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="bg-transparent border-none outline-none ml-2 text-sm w-48" 
+                className="bg-transparent border-none outline-none ml-2 text-gray-400" 
               />
             </div>
             <div className="relative">
