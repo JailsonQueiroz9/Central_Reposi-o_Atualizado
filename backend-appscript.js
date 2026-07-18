@@ -115,6 +115,9 @@ function doPost(e) {
       case 'reorderPCPRows':
         result = reorderRows(data.sheetName || 'Wip042', data.idList);
         break;
+      case 'importSheetData':
+        result = importSheetData(data);
+        break;
       default:
         throw new Error("Ação não encontrada: " + action);
     }
@@ -750,7 +753,7 @@ function updateRow(sheetName, id, dataObj) {
   var rowIndex = -1;
   if (idColumnIndex !== -1) {
     for (var i = 1; i < data.length; i++) {
-      if (String(data[i][idColumnIndex]) === String(id)) {
+      if (String(data[i][idColumnIndex]).trim() === String(id).trim()) {
         rowIndex = i + 1;
         break;
       }
@@ -822,7 +825,7 @@ function deleteRow(sheetName, id) {
   var rowIndex = -1;
   if (idColumnIndex !== -1) {
     for (var i = 1; i < data.length; i++) {
-      if (String(data[i][idColumnIndex]) === String(id)) {
+      if (String(data[i][idColumnIndex]).trim() === String(id).trim()) {
         rowIndex = i + 1;
         break;
       }
@@ -1397,3 +1400,71 @@ function enviarEmailPersonalizado(awb, to, cc, bcc, customBody, sourceSheet) {
     console.error("❌ Erro ao enviar e-mail com MailApp:", err.toString());
   }
 }
+
+function importSheetData(data) {
+  var sheetName = data.sheetName;
+  var rows = data.rows;
+  
+  if (!sheetName) throw new Error("Nome da aba não fornecido");
+  if (!rows || !Array.isArray(rows)) throw new Error("Dados de linhas inválidos");
+  
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) {
+    sheet = ss.insertSheet(sheetName);
+  } else {
+    sheet.clearContents();
+  }
+  
+  if (rows.length === 0) {
+    return { success: true, count: 0 };
+  }
+  
+  // Extrai cabeçalhos de todas as linhas
+  var headersSet = {};
+  for (var i = 0; i < rows.length; i++) {
+    var keys = Object.keys(rows[i]);
+    for (var k = 0; k < keys.length; k++) {
+      if (keys[k] !== '_rowIndex' && keys[k] !== '') {
+        headersSet[keys[k]] = true;
+      }
+    }
+  }
+  var headers = Object.keys(headersSet);
+  
+  // Garante ID na primeira coluna se existir
+  var idIdx = headers.indexOf('id');
+  if (idIdx === -1) idIdx = headers.indexOf('ID');
+  if (idIdx !== -1) {
+    var idName = headers[idIdx];
+    headers.splice(idIdx, 1);
+    headers.unshift(idName);
+  } else {
+    headers.unshift('id');
+  }
+  
+  var writeValues = [headers];
+  for (var i = 0; i < rows.length; i++) {
+    var rowObj = rows[i];
+    var rowValues = [];
+    
+    // Auto-gera ID se estiver vazio
+    if (!rowObj.id && !rowObj.ID) {
+      rowObj.id = Utilities.getUuid();
+    }
+    
+    for (var h = 0; h < headers.length; h++) {
+      var header = headers[h];
+      var val = rowObj[header];
+      if (val === undefined || val === null) {
+        val = '';
+      }
+      rowValues.push(val);
+    }
+    writeValues.push(rowValues);
+  }
+  
+  sheet.getRange(1, 1, writeValues.length, headers.length).setValues(writeValues);
+  return { success: true, count: rows.length };
+}
+

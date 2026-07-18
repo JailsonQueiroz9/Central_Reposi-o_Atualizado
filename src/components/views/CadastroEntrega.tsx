@@ -4,12 +4,40 @@ import { PackageCheck, Search, User, Clock, Briefcase, FileText, Activity, Check
 import { api } from '@/lib/api';
 import { dataCache } from '@/lib/cache';
 
-export default function CadastroEntrega() {
+export default function CadastroEntrega({ currentUser }: { currentUser?: any }) {
   const [loading, setLoading] = useState(false);
   const [pendingItems, setPendingItems] = useState<any[]>([]);
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
   const [activeTab, setActiveTab] = useState<'m2' | 'aviamentos'>('m2');
+
+  // Permissões de Sub-telas de Entrega do Almox
+  const permissions = React.useMemo(() => {
+    if (!currentUser) return { almox_m2: true, almox_aviamento: true };
+    const rawPermissions = currentUser['Permissões de Tela (Módulos)'];
+    if (!rawPermissions) return { almox_m2: true, almox_aviamento: true };
+    try {
+      const parsed = typeof rawPermissions === 'string' ? JSON.parse(rawPermissions) : rawPermissions;
+      return {
+        almox_m2: parsed.almox_m2 !== false,
+        almox_aviamento: parsed.almox_aviamento !== false,
+      };
+    } catch {
+      return { almox_m2: true, almox_aviamento: true };
+    }
+  }, [currentUser]);
+
+  const hasM2 = permissions.almox_m2;
+  const hasAviamento = permissions.almox_aviamento;
+
+  // Ajusta automaticamente a aba ativa com base nas permissões
+  useEffect(() => {
+    if (!hasM2 && hasAviamento) {
+      setActiveTab('aviamentos');
+    } else if (hasM2) {
+      setActiveTab('m2');
+    }
+  }, [hasM2, hasAviamento]);
 
   // Filtra itens M²
   const m2Items = React.useMemo(() => {
@@ -274,38 +302,42 @@ export default function CadastroEntrega() {
 
           {/* Sub-screens Selector (Tabs) */}
           <div className="flex border-b border-gray-200 font-sans mt-4">
-            <button
-              onClick={() => setActiveTab('m2')}
-              className={`flex-1 flex items-center justify-center gap-2 py-3.5 text-center font-bold text-sm border-b-2 transition-all cursor-pointer ${
-                activeTab === 'm2'
-                  ? 'border-emerald-600 text-emerald-800 bg-emerald-50/20'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50/50'
-              }`}
-            >
-              <Box size={18} className={activeTab === 'm2' ? "text-emerald-600" : "text-gray-400"} />
-              <span>Itens Pendentes para Entrega M² (M²)</span>
-              <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                activeTab === 'm2' ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-500'
-              }`}>
-                {m2Items.length}
-              </span>
-            </button>
-            <button
-              onClick={() => setActiveTab('aviamentos')}
-              className={`flex-1 flex items-center justify-center gap-2 py-3.5 text-center font-bold text-sm border-b-2 transition-all cursor-pointer ${
-                activeTab === 'aviamentos'
-                  ? 'border-indigo-600 text-[#483D8B] bg-indigo-50/10'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50/50'
-              }`}
-            >
-              <PackageCheck size={18} className={activeTab === 'aviamentos' ? "text-indigo-600" : "text-gray-400"} />
-              <span>Itens Pendentes para Entrega Aviamento (PAR, UND, KG, M, MIL)</span>
-              <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                activeTab === 'aviamentos' ? 'bg-indigo-100 text-indigo-800' : 'bg-gray-100 text-gray-500'
-              }`}>
-                {aviamentoItems.length}
-              </span>
-            </button>
+            {hasM2 && (
+              <button
+                onClick={() => setActiveTab('m2')}
+                className={`flex-1 flex items-center justify-center gap-2 py-3.5 text-center font-bold text-sm border-b-2 transition-all cursor-pointer ${
+                  activeTab === 'm2'
+                    ? 'border-emerald-600 text-emerald-800 bg-emerald-50/20'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50/50'
+                }`}
+              >
+                <Box size={18} className={activeTab === 'm2' ? "text-emerald-600" : "text-gray-400"} />
+                <span>Itens Pendentes para Entrega M² (M²)</span>
+                <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                  activeTab === 'm2' ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-500'
+                }`}>
+                  {m2Items.length}
+                </span>
+              </button>
+            )}
+            {hasAviamento && (
+              <button
+                onClick={() => setActiveTab('aviamentos')}
+                className={`flex-1 flex items-center justify-center gap-2 py-3.5 text-center font-bold text-sm border-b-2 transition-all cursor-pointer ${
+                  activeTab === 'aviamentos'
+                    ? 'border-indigo-600 text-[#483D8B] bg-indigo-50/10'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50/50'
+                }`}
+              >
+                <PackageCheck size={18} className={activeTab === 'aviamentos' ? "text-indigo-600" : "text-gray-400"} />
+                <span>Itens Pendentes para Entrega Aviamento (PAR, UND, KG, M, MIL)</span>
+                <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                  activeTab === 'aviamentos' ? 'bg-indigo-100 text-indigo-800' : 'bg-gray-100 text-gray-500'
+                }`}>
+                  {aviamentoItems.length}
+                </span>
+              </button>
+            )}
           </div>
 
           {/* Pending Items Section */}

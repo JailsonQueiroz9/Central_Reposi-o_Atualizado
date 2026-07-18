@@ -30,6 +30,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { api } from '@/lib/api';
 import { dataCache } from '@/lib/cache';
 import Chat from './Chat';
+import UploadScreen from '../UploadScreen';
 
 const ToggleSwitch = ({ checked, onChange, disabled }: { checked: boolean; onChange: () => void; disabled?: boolean }) => {
   return (
@@ -67,14 +68,25 @@ const MODULES = [
 interface ConfiguracaoProps {
   currentUser?: any;
   onUpdateCurrentUser?: (user: any) => void;
+  activeTab?: 'acesso' | 'perfil' | 'chat_upload';
 }
 
 export default function Configuracao({ 
   currentUser, 
-  onUpdateCurrentUser 
+  onUpdateCurrentUser,
+  activeTab: forcedActiveTab
 }: ConfiguracaoProps) {
   const isAdmin = currentUser?.role === 'Admin' || currentUser?.['PAPEL'] === 'Admin';
-  const [activeTab, setActiveTab] = useState<'acesso' | 'perfil' | 'chat'>(isAdmin ? 'acesso' : 'perfil');
+  const [activeTab, setActiveTab] = useState<'acesso' | 'perfil' | 'chat_upload'>(
+    forcedActiveTab || (isAdmin ? 'acesso' : 'perfil')
+  );
+  const [activeSubTab, setActiveSubTab] = useState<'chat' | 'upload'>('chat');
+
+  useEffect(() => {
+    if (forcedActiveTab) {
+      setActiveTab(forcedActiveTab);
+    }
+  }, [forcedActiveTab]);
   
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,6 +99,7 @@ export default function Configuracao({
 
   // States for Follow-up Sub-permissions Modal
   const [selectedSubPermUser, setSelectedSubPermUser] = useState<any | null>(null);
+  const [activeSubPermModule, setActiveSubPermModule] = useState<'followup' | 'config' | 'cadastroEntrega' | null>(null);
   const [subPermsForm, setSubPermsForm] = useState<any>(null);
 
   useEffect(() => {
@@ -94,6 +107,7 @@ export default function Configuracao({
       setSubPermsForm({ ...(selectedSubPermUser.permissions || {}) });
     } else {
       setSubPermsForm(null);
+      setActiveSubPermModule(null);
     }
   }, [selectedSubPermUser]);
 
@@ -132,8 +146,8 @@ export default function Configuracao({
     
     // Atualiza localmente a lista de usuários com as novas permissões consolidadas
     const updatedUsers = users.map(u => {
-      const currentId = u.id || u['ID'];
-      if (currentId === userId) {
+      const currentId = u.id || u['ID'] || u.ID;
+      if (String(currentId) === String(userId)) {
         return {
           ...u,
           permissions: {
@@ -147,7 +161,7 @@ export default function Configuracao({
     setUsers(updatedUsers);
     
     // Salva no banco de dados via API
-    const userToSave = updatedUsers.find(u => (u.id || u['ID']) === userId);
+    const userToSave = updatedUsers.find(u => String(u.id || u['ID'] || u.ID) === String(userId));
     if (userToSave) {
       setSavingId(userId);
       try {
@@ -158,14 +172,19 @@ export default function Configuracao({
         };
         await api.post('updateUser', dataToSave);
         dataCache.invalidate('allUsers');
-      } catch (err) {
+        alert('Sub-permissões salvas com sucesso no banco de dados!');
+      } catch (err: any) {
         console.error('Erro ao salvar sub-permissões do usuário no banco:', err);
+        alert('Erro ao salvar sub-permissões no banco de dados: ' + (err.message || err));
       } finally {
         setSavingId(null);
       }
+    } else {
+      alert('Erro interno: Usuário não encontrado para salvar.');
     }
     
     setSelectedSubPermUser(null);
+    setActiveSubPermModule(null);
   };
 
   // Profile Form States
@@ -217,7 +236,13 @@ export default function Configuracao({
           followup_awb: true,
           followup_awb_novo: true,
           followup_awb_acoes: true,
-          followup_awb_anexar: true
+          followup_awb_anexar: true,
+          config_acesso: isAdminUser,
+          config_perfil: true,
+          config_chat: true,
+          config_upload: true,
+          almox_m2: true,
+          almox_aviamento: true
         };
         
         // Tentar buscar da coluna da planilha
@@ -245,7 +270,13 @@ export default function Configuracao({
               followup_awb: parsed.followup_awb !== false,
               followup_awb_novo: parsed.followup_awb_novo !== false,
               followup_awb_acoes: parsed.followup_awb_acoes !== false,
-              followup_awb_anexar: parsed.followup_awb_anexar !== false
+              followup_awb_anexar: parsed.followup_awb_anexar !== false,
+              config_acesso: parsed.config_acesso !== undefined ? parsed.config_acesso === true : isAdminUser,
+              config_perfil: parsed.config_perfil !== undefined ? parsed.config_perfil === true : true,
+              config_chat: parsed.config_chat !== undefined ? parsed.config_chat === true : true,
+              config_upload: parsed.config_upload !== undefined ? parsed.config_upload === true : true,
+              almox_m2: parsed.almox_m2 !== false,
+              almox_aviamento: parsed.almox_aviamento !== false
             };
           } catch (e) {
             console.warn('Erro ao parsear permissões para o usuário', u['USUÁRIO']);
@@ -265,11 +296,40 @@ export default function Configuracao({
   const togglePermission = (userId: any, module: string) => {
     setUsers(users.map(u => {
       const currentId = u.id || u['ID'];
-      if (currentId === userId) {
+      if (String(currentId) === String(userId)) {
+        const currentlyHas = u.permissions[module as keyof typeof u.permissions] || false;
         const updatedPermissions = { 
           ...u.permissions, 
-          [module]: !u.permissions[module as keyof typeof u.permissions] 
+          [module]: !currentlyHas
         };
+
+        // If enabling config and sub-permissions are completely missing, populate them for convenience:
+        if (module === 'config' && !currentlyHas) {
+          const isUserAdmin = u.role === 'Admin' || u['PAPEL'] === 'Admin';
+          if (updatedPermissions.config_acesso === undefined) {
+            updatedPermissions.config_acesso = isUserAdmin;
+          }
+          if (updatedPermissions.config_perfil === undefined) {
+            updatedPermissions.config_perfil = true;
+          }
+          if (updatedPermissions.config_chat === undefined) {
+            updatedPermissions.config_chat = true;
+          }
+          if (updatedPermissions.config_upload === undefined) {
+            updatedPermissions.config_upload = true;
+          }
+        }
+
+        // If enabling cadastroEntrega and sub-permissions are completely missing, populate them for convenience:
+        if (module === 'cadastroEntrega' && !currentlyHas) {
+          if (updatedPermissions.almox_m2 === undefined) {
+            updatedPermissions.almox_m2 = true;
+          }
+          if (updatedPermissions.almox_aviamento === undefined) {
+            updatedPermissions.almox_aviamento = true;
+          }
+        }
+
         return { ...u, permissions: updatedPermissions };
       }
       return u;
@@ -277,7 +337,7 @@ export default function Configuracao({
   };
 
   const toggleStatus = async (userId: any) => {
-    const userToUpdate = users.find(u => (u.id || u['ID']) === userId);
+    const userToUpdate = users.find(u => String(u.id || u['ID']) === String(userId));
     if (!userToUpdate) return;
 
     const currentStatus = userToUpdate.status || userToUpdate['STATUS'] || 'ativo';
@@ -292,7 +352,7 @@ export default function Configuracao({
 
     setUsers(users.map(u => {
       const currentId = u.id || u['ID'];
-      if (currentId === userId) {
+      if (String(currentId) === String(userId)) {
         return updatedUser;
       }
       return u;
@@ -308,12 +368,14 @@ export default function Configuracao({
       await api.post('updateUser', dataToSave);
       dataCache.invalidate('allUsers');
       console.log('[DEBUG] Status do usuário salvo com sucesso no banco de dados:', newStatus);
-    } catch (error) {
+      alert('Status do usuário atualizado com sucesso!');
+    } catch (error: any) {
       console.error('Erro ao salvar status do usuário no banco:', error);
+      alert('Erro ao atualizar status do usuário no banco: ' + (error.message || error));
       // Reverte o estado local em caso de falha na API
       setUsers(users.map(u => {
         const currentId = u.id || u['ID'];
-        if (currentId === userId) {
+        if (String(currentId) === String(userId)) {
           return userToUpdate;
         }
         return u;
@@ -324,10 +386,13 @@ export default function Configuracao({
   };
 
   const handleSaveUser = async (userId: any) => {
-    const user = users.find(u => (u.id || u.ID) === userId);
-    if (!user) return;
+    const user = users.find(u => String(u.id || u.ID || u['ID']) === String(userId));
+    if (!user) {
+      alert('Erro: Usuário não encontrado para salvar.');
+      return;
+    }
 
-    setSavingId(userId as number);
+    setSavingId(userId);
     try {
       // Preparamos os dados para salvar, incluindo a stringificação das permissões
       // para a coluna correta da planilha
@@ -342,9 +407,10 @@ export default function Configuracao({
       // Invalida o cache para que as mudanças sejam refletidas em todo o sistema
       dataCache.invalidate('allUsers');
       console.log('[DEBUG] Cache allUsers invalidado após atualização de usuário');
-      
-    } catch (error) {
+      alert('Alterações de permissões salvas com sucesso no banco de dados!');
+    } catch (error: any) {
       console.error('Erro ao salvar usuário:', error);
+      alert('Erro ao salvar alterações no banco de dados: ' + (error.message || error));
     } finally {
       setSavingId(null);
     }
@@ -414,7 +480,13 @@ export default function Configuracao({
             followup_awb: true,
             followup_awb_novo: true,
             followup_awb_acoes: true,
-            followup_awb_anexar: true
+            followup_awb_anexar: true,
+            config_acesso: newUser.role === 'Admin',
+            config_perfil: true,
+            config_chat: true,
+            config_upload: true,
+            almox_m2: true,
+            almox_aviamento: true
           }
         };
         setUsers([...users, addedWithPerms]);
@@ -474,10 +546,20 @@ export default function Configuracao({
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-              Configurações do Sistema
+              {forcedActiveTab ? (
+                activeTab === 'acesso' ? 'Controle de Acesso' : 'Perfil de Usuários'
+              ) : (
+                'Configurações do Sistema'
+              )}
             </h1>
             <p className="text-sm text-gray-500">
-              Gerencie suas informações de perfil, acesso e converse com a equipe.
+              {forcedActiveTab ? (
+                activeTab === 'acesso' 
+                  ? 'Gerencie as permissões e níveis de acesso de cada usuário.' 
+                  : 'Atualize seus dados pessoais e altere sua senha de acesso.'
+              ) : (
+                'Gerencie suas informações de perfil, acesso e converse com a equipe.'
+              )}
             </p>
           </div>
           
@@ -497,43 +579,45 @@ export default function Configuracao({
         </div>
 
         {/* Tab Navigator */}
-        <div className="flex border-b border-gray-200 mb-6 overflow-x-auto whitespace-nowrap scrollbar-none">
-          {isAdmin && (
+        {!forcedActiveTab && (
+          <div className="flex border-b border-gray-200 mb-6 overflow-x-auto whitespace-nowrap scrollbar-none">
+            {isAdmin && (
+              <button
+                onClick={() => setActiveTab('acesso')}
+                className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-all duration-150 cursor-pointer ${
+                  activeTab === 'acesso'
+                    ? 'border-blue-600 text-blue-600 bg-blue-50/50'
+                    : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-100/50'
+                }`}
+              >
+                <Shield size={16} />
+                Controle de Acesso
+              </button>
+            )}
             <button
-              onClick={() => setActiveTab('acesso')}
+              onClick={() => setActiveTab('perfil')}
               className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-all duration-150 cursor-pointer ${
-                activeTab === 'acesso'
+                activeTab === 'perfil'
                   ? 'border-blue-600 text-blue-600 bg-blue-50/50'
                   : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-100/50'
               }`}
             >
-              <Shield size={16} />
-              Controle de Acesso
+              <User size={16} />
+              Perfil de usuários
             </button>
-          )}
-          <button
-            onClick={() => setActiveTab('perfil')}
-            className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-all duration-150 cursor-pointer ${
-              activeTab === 'perfil'
-                ? 'border-blue-600 text-blue-600 bg-blue-50/50'
-                : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-100/50'
-            }`}
-          >
-            <User size={16} />
-            Perfil de usuários
-          </button>
-          <button
-            onClick={() => setActiveTab('chat')}
-            className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-all duration-150 cursor-pointer ${
-              activeTab === 'chat'
-                ? 'border-blue-600 text-blue-600 bg-blue-50/50'
-                : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-100/50'
-            }`}
-          >
-            <MessageCircle size={16} />
-            Chat Interno
-          </button>
-        </div>
+            <button
+              onClick={() => setActiveTab('chat_upload')}
+              className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-all duration-150 cursor-pointer ${
+                activeTab === 'chat_upload'
+                  ? 'border-blue-600 text-blue-600 bg-blue-50/50'
+                  : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-100/50'
+              }`}
+            >
+              <MessageCircle size={16} />
+              Chat Interno e upload
+            </button>
+          </div>
+        )}
 
         {/* Tabs Panels Container */}
         <div className="flex-1">
@@ -613,7 +697,40 @@ export default function Configuracao({
                                     {m.key === 'followup' && hasPermission && (
                                       <button
                                         type="button"
-                                        onClick={() => setSelectedSubPermUser(user)}
+                                        onClick={() => {
+                                          setSelectedSubPermUser(user);
+                                          setActiveSubPermModule('followup');
+                                        }}
+                                        className="mt-1 px-1.5 py-0.5 rounded text-[10px] bg-slate-100 hover:bg-orange-50 hover:text-orange-600 border border-slate-200 text-slate-600 flex items-center gap-1 cursor-pointer transition-colors font-medium shadow-sm"
+                                        title="Configurar sub-permissões"
+                                        disabled={isInactive}
+                                      >
+                                        <Settings size={10} className="text-orange-500 animate-spin-slow" />
+                                        <span>Acesso</span>
+                                      </button>
+                                    )}
+                                    {m.key === 'cadastroEntrega' && hasPermission && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setSelectedSubPermUser(user);
+                                          setActiveSubPermModule('cadastroEntrega');
+                                        }}
+                                        className="mt-1 px-1.5 py-0.5 rounded text-[10px] bg-slate-100 hover:bg-orange-50 hover:text-orange-600 border border-slate-200 text-slate-600 flex items-center gap-1 cursor-pointer transition-colors font-medium shadow-sm"
+                                        title="Configurar sub-permissões"
+                                        disabled={isInactive}
+                                      >
+                                        <Settings size={10} className="text-orange-500 animate-spin-slow" />
+                                        <span>Acesso</span>
+                                      </button>
+                                    )}
+                                    {m.key === 'config' && hasPermission && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setSelectedSubPermUser(user);
+                                          setActiveSubPermModule('config');
+                                        }}
                                         className="mt-1 px-1.5 py-0.5 rounded text-[10px] bg-slate-100 hover:bg-orange-50 hover:text-orange-600 border border-slate-200 text-slate-600 flex items-center gap-1 cursor-pointer transition-colors font-medium shadow-sm"
                                         title="Configurar sub-permissões"
                                         disabled={isInactive}
@@ -841,10 +958,44 @@ export default function Configuracao({
             </div>
           )}
 
-          {/* TAB 3: CHAT INTERNO */}
-          {activeTab === 'chat' && (
-            <div className="h-[calc(100vh-210px)] rounded-xl overflow-hidden border border-gray-200 bg-white shadow-sm">
-              <Chat />
+          {/* TAB 3: CHAT INTERNO E UPLOAD */}
+          {activeTab === 'chat_upload' && (
+            <div className="flex flex-col h-[calc(100vh-210px)] bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              <div className="flex border-b border-gray-200 bg-gray-50/50 p-2 gap-2 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setActiveSubTab('chat')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-150 cursor-pointer ${
+                    activeSubTab === 'chat'
+                      ? 'bg-blue-600 text-white shadow-sm font-bold'
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
+                  }`}
+                >
+                  <MessageCircle size={14} />
+                  Chat Interno
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveSubTab('upload')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-150 cursor-pointer ${
+                    activeSubTab === 'upload'
+                      ? 'bg-blue-600 text-white shadow-sm font-bold'
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
+                  }`}
+                >
+                  <FileUp size={14} />
+                  Importar Planilhas (Wip042 / Follow MP)
+                </button>
+              </div>
+              <div className="flex-1 overflow-hidden">
+                {activeSubTab === 'chat' ? (
+                  <div className="h-full">
+                    <Chat />
+                  </div>
+                ) : (
+                  <UploadScreen currentUser={currentUser} />
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -956,7 +1107,7 @@ export default function Configuracao({
 
       {/* Modal Sub-permissões Follow-up (Controle de Acesso) */}
       <AnimatePresence>
-        {selectedSubPermUser && subPermsForm && (
+        {selectedSubPermUser && subPermsForm && activeSubPermModule === 'followup' && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <motion.div 
               initial={{ opacity: 0 }}
@@ -1019,7 +1170,7 @@ export default function Configuracao({
                       </div>
                       <div>
                         <p className="text-sm font-bold text-gray-800">Matéria-Prima</p>
-                        <p className="text-[11px] text-gray-500">Visualizar estoque, fornecedores e status de MP</p>
+                        <p className="text-[11px] text-gray-500">Visualizar estoque, fornecedores and status de MP</p>
                       </div>
                     </div>
                     <ToggleSwitch 
@@ -1106,6 +1257,255 @@ export default function Configuracao({
                     </motion.div>
                   )}
                 </AnimatePresence>
+              </div>
+
+              <div className="p-6 border-t border-gray-100 bg-slate-50 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setSelectedSubPermUser(null)}
+                  className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 bg-white rounded-lg hover:bg-gray-50 transition-colors font-semibold text-sm cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveSubPerms}
+                  disabled={savingId === selectedSubPermUser.id || savingId === selectedSubPermUser['ID']}
+                  className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold text-sm cursor-pointer flex items-center justify-center gap-2 animate-pulse-once"
+                >
+                  {savingId === selectedSubPermUser.id || savingId === selectedSubPermUser['ID'] ? (
+                    <>
+                      <Loader2 className="animate-spin" size={16} />
+                      Salvando...
+                    </>
+                  ) : (
+                    <>
+                      <Save size={16} />
+                      Salvar Alterações
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal Sub-permissões Configuração (Controle de Acesso) */}
+      <AnimatePresence>
+        {selectedSubPermUser && subPermsForm && activeSubPermModule === 'config' && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedSubPermUser(null)}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl shadow-xl w-full max-w-lg relative z-10 overflow-hidden"
+            >
+              <div className="flex items-center justify-between p-6 border-b border-gray-100 bg-slate-50">
+                <div>
+                  <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                    <Settings className="text-orange-500 animate-spin-slow" size={20} />
+                    Nível de Acesso: Configuração
+                  </h2>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Defina as permissões específicas do usuário: <span className="font-semibold text-gray-700">{selectedSubPermUser.name || selectedSubPermUser['USUÁRIO']}</span>
+                  </p>
+                </div>
+                <button 
+                  onClick={() => setSelectedSubPermUser(null)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-lg hover:bg-gray-100 cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-5 max-h-[70vh] overflow-auto">
+                {/* 1. SEÇÃO: ACESSO ÀS SUB-TELAS PRINCIPAIS */}
+                <div className="space-y-3.5">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Sub-telas Disponíveis</h3>
+                  
+                  {/* Controle de Acesso */}
+                  <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-orange-100 text-orange-600 rounded-lg">
+                        <Shield size={18} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-gray-800">Controle de Acesso</p>
+                        <p className="text-[11px] text-gray-500">Gerenciar permissões e usuários do sistema</p>
+                      </div>
+                    </div>
+                    <ToggleSwitch 
+                      checked={!!subPermsForm.config_acesso}
+                      onChange={() => handleToggleFormSubPerm('config_acesso')}
+                    />
+                  </div>
+
+                  {/* Perfil de usuários */}
+                  <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-orange-100 text-orange-600 rounded-lg">
+                        <User size={18} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-gray-800">Perfil de Usuários</p>
+                        <p className="text-[11px] text-gray-500">Visualizar e editar dados de perfil próprio</p>
+                      </div>
+                    </div>
+                    <ToggleSwitch 
+                      checked={!!subPermsForm.config_perfil}
+                      onChange={() => handleToggleFormSubPerm('config_perfil')}
+                    />
+                  </div>
+
+                  {/* Chat Interno */}
+                  <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-orange-100 text-orange-600 rounded-lg">
+                        <MessageCircle size={18} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-gray-800">Chat Interno</p>
+                        <p className="text-[11px] text-gray-500">Acessar e interagir no chat da equipe</p>
+                      </div>
+                    </div>
+                    <ToggleSwitch 
+                      checked={!!subPermsForm.config_chat}
+                      onChange={() => handleToggleFormSubPerm('config_chat')}
+                    />
+                  </div>
+
+                  {/* Upload */}
+                  <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-orange-100 text-orange-600 rounded-lg">
+                        <FileUp size={18} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-gray-800">Upload</p>
+                        <p className="text-[11px] text-gray-500">Fazer upload e gerenciar arquivos</p>
+                      </div>
+                    </div>
+                    <ToggleSwitch 
+                      checked={!!subPermsForm.config_upload}
+                      onChange={() => handleToggleFormSubPerm('config_upload')}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 border-t border-gray-100 bg-slate-50 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setSelectedSubPermUser(null)}
+                  className="flex-1 px-4 py-2.5 border border-gray-300 text-gray-700 bg-white rounded-lg hover:bg-gray-50 transition-colors font-semibold text-sm cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveSubPerms}
+                  disabled={savingId === selectedSubPermUser.id || savingId === selectedSubPermUser['ID']}
+                  className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold text-sm cursor-pointer flex items-center justify-center gap-2 animate-pulse-once"
+                >
+                  {savingId === selectedSubPermUser.id || savingId === selectedSubPermUser['ID'] ? (
+                    <>
+                      <Loader2 className="animate-spin" size={16} />
+                      Salvando...
+                    </>
+                  ) : (
+                    <>
+                      <Save size={16} />
+                      Salvar Alterações
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal Sub-permissões Entrega do Almox */}
+      <AnimatePresence>
+        {selectedSubPermUser && subPermsForm && activeSubPermModule === 'cadastroEntrega' && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedSubPermUser(null)}
+              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl shadow-xl w-full max-w-lg relative z-10 overflow-hidden"
+            >
+              <div className="flex items-center justify-between p-6 border-b border-gray-100 bg-slate-50">
+                <div>
+                  <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                    <Shield className="text-orange-500" size={20} />
+                    Nível de Acesso: Entrega do Almox
+                  </h2>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Defina as permissões específicas do usuário: <span className="font-semibold text-gray-700">{selectedSubPermUser.name || selectedSubPermUser['USUÁRIO']}</span>
+                  </p>
+                </div>
+                <button 
+                  onClick={() => setSelectedSubPermUser(null)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors p-1 rounded-lg hover:bg-gray-100 cursor-pointer"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-5 max-h-[70vh] overflow-auto">
+                <div className="space-y-3.5">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Telas de Entrega</h3>
+                  
+                  {/* M² */}
+                  <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-orange-100 text-orange-600 rounded-lg">
+                        <Box size={18} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-gray-800">Itens Pendentes para Entrega M² (M²)</p>
+                        <p className="text-[11px] text-gray-500">Visualizar e registrar a entrega de itens de medida M²</p>
+                      </div>
+                    </div>
+                    <ToggleSwitch 
+                      checked={subPermsForm.almox_m2 !== false}
+                      onChange={() => handleToggleFormSubPerm('almox_m2')}
+                    />
+                  </div>
+
+                  {/* Aviamentos */}
+                  <div className="flex items-center justify-between p-3.5 bg-slate-50 rounded-xl border border-slate-100">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-orange-100 text-orange-600 rounded-lg">
+                        <Box size={18} />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-gray-800">Itens Pendentes para Entrega Aviamento</p>
+                        <p className="text-[11px] text-gray-500">Visualizar e registrar a entrega de aviamentos (PAR, UND, KG, M, MIL)</p>
+                      </div>
+                    </div>
+                    <ToggleSwitch 
+                      checked={subPermsForm.almox_aviamento !== false}
+                      onChange={() => handleToggleFormSubPerm('almox_aviamento')}
+                    />
+                  </div>
+                </div>
               </div>
 
               <div className="p-6 border-t border-gray-100 bg-slate-50 flex gap-3">

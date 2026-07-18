@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { LayoutDashboard, FileText, Activity, MessageCircle, Settings, Menu, X, LogOut, Loader2, Download, Box, ClipboardList, CalendarClock, Layers, Shield, ChevronDown, ChevronRight, ShoppingCart, Scissors } from 'lucide-react';
+import { LayoutDashboard, FileText, Activity, MessageCircle, Settings, Menu, X, LogOut, Loader2, Download, Box, ClipboardList, CalendarClock, Layers, Shield, ChevronDown, ChevronRight, ShoppingCart, Scissors, FileUp, User } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { api } from './lib/api';
 import { dataCache } from './lib/cache';
@@ -16,8 +16,9 @@ import EntregaDublagem from './components/views/EntregaDublagem';
 import DisponivelCentral from './components/views/DisponivelCentral';
 import Producao from './components/views/Producao';
 import ProgramacaoPCP from './components/views/ProgramacaoPCP';
+import UploadScreen from './components/UploadScreen';
 
-type ViewType = 'painel' | 'cadastro' | 'almox' | 'followup' | 'chat' | 'configuracao' | 'cadastroEntrega' | 'entregaDublagem' | 'disponivelCentral' | 'producao' | 'programacaoPCP';
+type ViewType = 'painel' | 'cadastro' | 'almox' | 'followup' | 'chat' | 'configuracao' | 'config_acesso' | 'config_perfil' | 'upload' | 'cadastroEntrega' | 'entregaDublagem' | 'disponivelCentral' | 'producao' | 'programacaoPCP';
 
 const menuItems = [
   { id: 'painel', label: 'Painel (Status)', icon: LayoutDashboard, perm: 'painel' },
@@ -29,7 +30,13 @@ const menuItems = [
   { id: 'producao', label: 'Produção', icon: ClipboardList, perm: 'producao' },
   { id: 'programacaoPCP', label: 'Programação PCP', icon: CalendarClock, perm: 'programacaoPCP' },
   { id: 'followup', label: 'Follow-up', icon: Activity, perm: 'followup' },
-  { id: 'configuracao', label: 'Configuração', icon: Settings, perm: 'config' },
+] as const;
+
+const configItems = [
+  { id: 'config_acesso', label: 'Controle de Acesso', icon: Shield, adminOnly: true },
+  { id: 'config_perfil', label: 'Perfil de usuários', icon: User, adminOnly: false },
+  { id: 'chat', label: 'Chat Interno', icon: MessageCircle, adminOnly: false },
+  { id: 'upload', label: 'Upload', icon: FileUp, adminOnly: false },
 ] as const;
 
 export default function App() {
@@ -120,7 +127,13 @@ export default function App() {
       programacaoPCP: parsed.programacaoPCP !== false,
       followup: parsed.followup !== false,
       chat: parsed.chat !== false,
-      config: parsed.config !== undefined ? parsed.config === true : isAdmin
+      config: parsed.config !== undefined ? parsed.config === true : isAdmin,
+      config_acesso: parsed.config_acesso !== undefined ? parsed.config_acesso === true : isAdmin,
+      config_perfil: parsed.config_perfil !== undefined ? parsed.config_perfil === true : true,
+      config_chat: parsed.config_chat !== undefined ? parsed.config_chat === true : true,
+      config_upload: parsed.config_upload !== undefined ? parsed.config_upload === true : true,
+      almox_m2: parsed.almox_m2 !== false,
+      almox_aviamento: parsed.almox_aviamento !== false
     };
   }, [user]);
 
@@ -137,9 +150,36 @@ export default function App() {
           console.warn(`[SEGURANÇA] Usuário sem permissão para acessar a tela [${activeView}]. Redirecionando para Painel (Status).`);
           setActiveView('painel');
         }
+      } else {
+        const currentConfigItem = configItems.find(item => item.id === activeView);
+        if (currentConfigItem) {
+          const hasConfigPerm = (permissions as any).config === true;
+          const isUserAdmin = user?.role === 'Admin' || user?.['PAPEL'] === 'Admin';
+          const hasAdminPerm = !currentConfigItem.adminOnly || isUserAdmin;
+
+          let subPermKey = '';
+          if (currentConfigItem.id === 'config_acesso') subPermKey = 'config_acesso';
+          else if (currentConfigItem.id === 'config_perfil') subPermKey = 'config_perfil';
+          else if (currentConfigItem.id === 'chat') subPermKey = 'config_chat';
+          else if (currentConfigItem.id === 'upload') subPermKey = 'config_upload';
+
+          let defaultVal = true;
+          if (subPermKey === 'config_acesso') {
+            defaultVal = isUserAdmin;
+          }
+
+          const hasSpecificPerm = (permissions as any)[subPermKey] !== undefined
+            ? (permissions as any)[subPermKey] === true
+            : defaultVal;
+
+          if (!hasConfigPerm || !hasAdminPerm || !hasSpecificPerm) {
+            console.warn(`[SEGURANÇA] Usuário sem permissão para acessar a tela de configuração [${activeView}]. Redirecionando para Painel (Status).`);
+            setActiveView('painel');
+          }
+        }
       }
     }
-  }, [activeView, permissions, isAuthenticated]);
+  }, [activeView, permissions, isAuthenticated, user]);
 
   const handleLogout = () => {
     localStorage.removeItem('pcp_user');
@@ -339,11 +379,13 @@ export default function App() {
   const groupReposicao = useMemo(() => ['painel', 'cadastro', 'almox', 'cadastroEntrega', 'entregaDublagem', 'disponivelCentral'], []);
   const groupCorte = useMemo(() => ['producao', 'programacaoPCP'], []);
   const groupCompras = useMemo(() => ['followup'], []);
+  const groupConfig = useMemo(() => ['config_acesso', 'config_perfil', 'chat', 'upload'], []);
 
   const [expandedGroups, setExpandedGroups] = useState({
     reposicao: true,
     corte: true,
-    compras: true
+    compras: true,
+    config: true
   });
 
   const permittedReposicao = useMemo(() => {
@@ -358,9 +400,29 @@ export default function App() {
     return filteredMenuItems.filter(item => groupCompras.includes(item.id));
   }, [filteredMenuItems, groupCompras]);
 
-  const permittedDirect = useMemo(() => {
-    return filteredMenuItems.filter(item => ['configuracao'].includes(item.id));
-  }, [filteredMenuItems]);
+  const isAdmin = user?.role === 'Admin' || user?.['PAPEL'] === 'Admin';
+  const permittedConfig = useMemo(() => {
+    if (!permissions || (permissions as any).config !== true) return [];
+    return configItems.filter(item => {
+      let permKey = '';
+      if (item.id === 'config_acesso') permKey = 'config_acesso';
+      else if (item.id === 'config_perfil') permKey = 'config_perfil';
+      else if (item.id === 'chat') permKey = 'config_chat';
+      else if (item.id === 'upload') permKey = 'config_upload';
+
+      // Default fallback if undefined:
+      let defaultVal = true;
+      if (permKey === 'config_acesso') {
+        defaultVal = isAdmin;
+      }
+      
+      const hasPerm = (permissions as any)[permKey] !== undefined 
+        ? (permissions as any)[permKey] === true 
+        : defaultVal;
+      
+      return hasPerm && (!item.adminOnly || isAdmin);
+    });
+  }, [isAdmin, permissions]);
 
   useEffect(() => {
     if (groupReposicao.includes(activeView)) {
@@ -369,8 +431,10 @@ export default function App() {
       setExpandedGroups(prev => ({ ...prev, corte: true }));
     } else if (groupCompras.includes(activeView)) {
       setExpandedGroups(prev => ({ ...prev, compras: true }));
+    } else if (groupConfig.includes(activeView)) {
+      setExpandedGroups(prev => ({ ...prev, config: true }));
     }
-  }, [activeView, groupReposicao, groupCorte, groupCompras]);
+  }, [activeView, groupReposicao, groupCorte, groupCompras, groupConfig]);
 
   // Só considera o sistema "carregado" se o carregamento de autenticação inicial terminou
   const isAppReady = !isInitialLoading;
@@ -422,13 +486,34 @@ export default function App() {
       case 'painel': return <Painel />;
       case 'cadastro': return <Cadastro />;
       case 'almox': return <Almox />;
-      case 'cadastroEntrega': return <CadastroEntrega />;
+      case 'cadastroEntrega': return <CadastroEntrega currentUser={user} />;
       case 'entregaDublagem': return <EntregaDublagem />;
       case 'disponivelCentral': return <DisponivelCentral />;
       case 'producao': return <Producao />;
       case 'programacaoPCP': return <ProgramacaoPCP setHeaderContent={setHeaderContent} />;
       case 'followup': return <FollowUp isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} currentUser={user} />;
       case 'chat': return <Chat />;
+      case 'config_acesso': return (
+        <Configuracao 
+          currentUser={user} 
+          activeTab="acesso"
+          onUpdateCurrentUser={(updatedUser) => {
+            setUser(updatedUser);
+            localStorage.setItem('pcp_user', JSON.stringify(updatedUser));
+          }} 
+        />
+      );
+      case 'config_perfil': return (
+        <Configuracao 
+          currentUser={user} 
+          activeTab="perfil"
+          onUpdateCurrentUser={(updatedUser) => {
+            setUser(updatedUser);
+            localStorage.setItem('pcp_user', JSON.stringify(updatedUser));
+          }} 
+        />
+      );
+      case 'upload': return <UploadScreen currentUser={user} />;
       case 'configuracao': return (
         <Configuracao 
           currentUser={user} 
@@ -629,30 +714,53 @@ export default function App() {
             </div>
           )}
 
-          {/* Direct Links (Chat, Configuração) */}
-          {permittedDirect.length > 0 && (
-            <div className="pt-2 border-t border-slate-800/55 space-y-1">
-              {permittedDirect.map((item) => {
-                const Icon = item.icon;
-                const isActive = activeView === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => {
-                      setActiveView(item.id);
-                      if (window.innerWidth < 768) setIsSidebarOpen(false);
-                    }}
-                    className={`w-full flex items-center gap-3 px-6 py-2.5 text-sm transition-colors ${
-                      isActive 
-                        ? 'bg-slate-800 border-r-4 border-orange-500 font-semibold text-white' 
-                        : 'text-white/75 hover:text-white hover:bg-slate-800/55'
-                    }`}
+          {/* Grupo 4: Configuração */}
+          {permittedConfig.length > 0 && (
+            <div className="space-y-1 pt-2 border-t border-slate-800/55">
+              <button
+                onClick={() => setExpandedGroups(prev => ({ ...prev, config: !prev.config }))}
+                className="w-full flex items-center justify-between px-6 py-2 text-xs font-bold uppercase tracking-wider text-slate-400 hover:text-white hover:bg-slate-800/40 transition-colors duration-150 cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Settings size={16} className="text-orange-500" />
+                  <span>Configuração</span>
+                </div>
+                {expandedGroups.config ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              </button>
+              
+              <AnimatePresence initial={false}>
+                {expandedGroups.config && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden space-y-0.5"
                   >
-                    <Icon size={18} />
-                    <span>{item.label}</span>
-                  </button>
-                );
-              })}
+                    {permittedConfig.map((item) => {
+                      const Icon = item.icon;
+                      const isActive = activeView === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => {
+                            setActiveView(item.id);
+                            if (window.innerWidth < 768) setIsSidebarOpen(false);
+                          }}
+                          className={`w-full flex items-center gap-3 pl-10 pr-6 py-2 text-sm transition-colors ${
+                            isActive 
+                              ? 'bg-slate-800 border-r-4 border-orange-500 font-semibold text-white' 
+                              : 'text-white/75 hover:text-white hover:bg-slate-800/55'
+                          }`}
+                        >
+                          <Icon size={16} />
+                          <span>{item.label}</span>
+                        </button>
+                      );
+                    })}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           )}
 
@@ -717,7 +825,7 @@ export default function App() {
               </div>
             ) : (
               <div className="ml-2 font-semibold text-white capitalize">
-                {menuItems.find(m => m.id === activeView)?.label}
+                {menuItems.find(m => m.id === activeView)?.label || configItems.find(m => m.id === activeView)?.label}
               </div>
             )}
           </div>
