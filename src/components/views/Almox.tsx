@@ -225,9 +225,22 @@ export default function Almox() {
 }
 
 function StatCard({ label, count, color, bg }: { label: string, count: number, color: string, bg: string }) {
+  let labelColor = "text-slate-700";
+  let borderColor = "border-gray-200/50";
+  if (bg.includes("orange")) {
+    labelColor = "text-orange-800";
+    borderColor = "border-orange-200/60";
+  } else if (bg.includes("purple")) {
+    labelColor = "text-purple-800";
+    borderColor = "border-purple-200/60";
+  } else if (bg.includes("blue")) {
+    labelColor = "text-blue-800";
+    borderColor = "border-blue-200/60";
+  }
+
   return (
-    <div className={`${bg} p-4 rounded-xl border border-white/50 flex flex-col items-center justify-center min-w-[100px]`}>
-      <span className="text-[10px] font-black uppercase tracking-tighter opacity-70 mb-1">{label}</span>
+    <div className={`${bg} p-4 rounded-xl border ${borderColor} flex flex-col items-center justify-center min-w-[100px] shadow-sm`}>
+      <span className={`text-[11px] font-extrabold uppercase tracking-wider ${labelColor} mb-1`}>{label}</span>
       <span className={`text-2xl font-black ${color}`}>{count}</span>
     </div>
   );

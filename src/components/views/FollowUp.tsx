@@ -475,15 +475,10 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
   };
 
   const downloadDocument = async (docName: string, awbItem: any) => {
-    // 0. Se houver link do Google Drive para o arquivo, abre diretamente em nova guia para visualização/download
-    if (awbItem && awbItem.DriveUrls && awbItem.DriveUrls[docName]) {
-      window.open(awbItem.DriveUrls[docName], '_blank');
-      return;
-    }
-
+    // 1. Tenta obter a representação binária local/cacheada para um download imediato no navegador
     let cachedDataUrl = uploadedFilesCache[docName];
     if (!cachedDataUrl) {
-      // 1. Tenta obter do FileBinaries compartilhado no registro do AWB
+      // 1.1 Tenta obter do FileBinaries compartilhado no registro do AWB
       if (awbItem && awbItem.FileBinaries && awbItem.FileBinaries[docName]) {
         cachedDataUrl = awbItem.FileBinaries[docName];
         setUploadedFilesCache(prev => ({
@@ -491,7 +486,7 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
           [docName]: cachedDataUrl
         }));
       } else {
-        // 2. Busca no IndexedDB o PDF original que foi importado
+        // 1.2 Busca no IndexedDB o PDF original que foi importado
         const content = await getPdfFromStorage(docName);
         if (content) {
           cachedDataUrl = content;
@@ -503,6 +498,7 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
       }
     }
 
+    // Se temos o binário localmente, baixa de forma instantânea e 100% confiável
     if (cachedDataUrl) {
       const link = document.createElement('a');
       link.href = cachedDataUrl;
@@ -510,7 +506,30 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-    } else if (docName.toLowerCase().endsWith('.pdf')) {
+      return;
+    }
+
+    // 2. Se não temos o binário localmente, baixa a partir do Google Drive usando link de download direto
+    if (awbItem && awbItem.DriveUrls && awbItem.DriveUrls[docName]) {
+      const driveUrl = awbItem.DriveUrls[docName];
+      // Extrai o ID do arquivo do link do Google Drive para formatar o link de download direto
+      const fileDMatch = driveUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+      const idMatch = driveUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+      const fileId = (fileDMatch && fileDMatch[1]) || (idMatch && idMatch[1]);
+
+      if (fileId) {
+        // Link que força o download direto do Google Drive
+        const directDownloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+        window.open(directDownloadUrl, '_blank');
+      } else {
+        // Fallback: se não conseguir converter, abre o link original do Drive
+        window.open(driveUrl, '_blank');
+      }
+      return;
+    }
+
+    // 3. Fallback final: se não houver arquivo físico em cache ou no Drive, gera o PDF no lado do cliente
+    if (docName.toLowerCase().endsWith('.pdf')) {
       const doc = new jsPDF();
       
       let key = '35260243631191000100550020010732631165266879';
@@ -2776,9 +2795,7 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className={`bg-white rounded-xl shadow-2xl border border-gray-200 w-full overflow-hidden transition-all duration-300 ${
-                previewedDocName ? 'max-w-6xl' : 'max-w-md'
-              }`}
+              className="bg-white rounded-xl shadow-2xl border border-gray-200 w-full max-w-xl overflow-hidden transition-all duration-300"
             >
               <div className="bg-slate-900 px-6 py-4 border-b border-slate-800 flex items-center justify-between">
                 <div>
@@ -2796,9 +2813,9 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-12 divide-y md:divide-y-0 md:divide-x divide-gray-200">
-                {/* Painel Esquerdo: Lista de Documentos e Upload */}
-                <div className={`${previewedDocName ? 'md:col-span-5' : 'md:col-span-12'} p-6 space-y-4 flex flex-col justify-between`}>
+              <div>
+                {/* Painel de Lista de Documentos e Upload */}
+                <div className="p-6 space-y-4 flex flex-col justify-between">
                   <div className="space-y-4">
                     <div className="space-y-2">
                       <span className="text-xs font-bold text-slate-500 uppercase block">Anexos Vinculados ({Array.isArray(selectedDocsAwb.DocList) ? selectedDocsAwb.DocList.length : 1})</span>
@@ -2808,11 +2825,7 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
                           return docs.map((docName: string, idx: number) => (
                             <div 
                               key={idx} 
-                              className={`flex justify-between items-center border rounded-lg p-3 transition-colors ${
-                                previewedDocName === docName 
-                                  ? 'bg-blue-50/50 border-blue-300 shadow-xs' 
-                                  : 'bg-slate-50 border-gray-200 hover:bg-slate-100/55'
-                              }`}
+                              className="flex justify-between items-center border rounded-lg p-3 transition-colors bg-slate-50 border-gray-200 hover:bg-slate-100/55"
                             >
                               <div className="flex items-center gap-2 overflow-hidden mr-2">
                                 <FileText size={16} className="text-blue-600 shrink-0" />
@@ -2833,14 +2846,6 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
                                     <span className="text-slate-300 text-[10px]">|</span>
                                   </>
                                 )}
-                                <button
-                                  onClick={() => setPreviewedDocName(docName)}
-                                  className="text-emerald-600 hover:text-emerald-700 text-xs font-bold hover:underline flex items-center gap-1 cursor-pointer"
-                                >
-                                  <Eye size={13} />
-                                  Visualizar
-                                </button>
-                                <span className="text-slate-300 text-[10px]">|</span>
                                 <button
                                   onClick={() => downloadDocument(docName, selectedDocsAwb)}
                                   className="text-blue-600 hover:text-blue-500 text-xs font-bold hover:underline flex items-center gap-1 cursor-pointer"
@@ -2913,8 +2918,8 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
                   </div>
                 </div>
 
-                {/* Painel Direito: Preview de DANFE */}
-                {previewedDocName && (
+                {/* Painel Direito: Preview de DANFE - Desativado */}
+                {false && previewedDocName && (
                   <div className="md:col-span-7 bg-slate-100 flex flex-col h-[650px] overflow-hidden">
                     {/* Header do Painel de Preview */}
                     <div className="bg-slate-50 px-4 py-3 border-b border-gray-200 flex items-center justify-between shadow-xs">
@@ -2976,12 +2981,13 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
                     <div className="flex-1 overflow-y-auto p-4 bg-slate-200/60 custom-scrollbar flex justify-center items-start">
                       <div id="danfe-preview-print-area" className="bg-white shadow-xl p-5 border border-gray-300 w-full max-w-[650px] text-[9px] leading-tight text-slate-950 font-sans select-none my-1">
                         {(() => {
+                          const docNameStr = previewedDocName || '';
                           let key = '35260243631191000100550020010732631165266879';
                           let nfNum = '1073263';
                           let supplier = selectedDocsAwb?.Fornecedor || 'BRANYL COM. IND. TEXTIL LTDA.';
 
                           // Tenta ler dados extraídos originalmente do arquivo
-                          const parsedInfo = selectedDocsAwb?.FileBinariesInfo?.[previewedDocName] || onTheFlyParsedInfo[previewedDocName];
+                          const parsedInfo = selectedDocsAwb?.FileBinariesInfo?.[docNameStr] || onTheFlyParsedInfo[docNameStr];
                           
                           if (parsedInfo) {
                             if (parsedInfo.ChaveDeAcesso) key = parsedInfo.ChaveDeAcesso;
@@ -2989,7 +2995,7 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
                             if (parsedInfo.Fornecedor) supplier = parsedInfo.Fornecedor;
                           } else {
                             // Extrair dados da chave e número da NF a partir do nome do arquivo (fallback)
-                            const digits = previewedDocName.replace(/\D/g, '');
+                            const digits = docNameStr.replace(/\D/g, '');
                             if (digits.length >= 7) {
                               if (digits.length >= 44) {
                                 key = digits.substring(0, 44);
@@ -3001,6 +3007,69 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
                           }
                           
                           const formattedKey = key.replace(/(.{4})/g, '$1 ').trim();
+
+                          const cnpjFornecedor = parsedInfo?.CNPJFornecedor || '43.631.191/0001-00';
+                          const inscEstadualFornecedor = parsedInfo?.InscricaoEstadualFornecedor || '133.063.160.111';
+                          const naturezaOperacao = parsedInfo?.NaturezaOperacao || 'VENDA DE PRODUÇÃO DO ESTABELECIMENTO';
+                          const destinatarioNome = parsedInfo?.DestinatarioNome || 'DASS NORDESTE CALCADOS E ARTIGOS ESPORTIVOS S/A';
+                          const destinatarioCNPJ = parsedInfo?.DestinatarioCNPJ || '04.717.383/0001-52';
+                          const destinatarioEndereco = parsedInfo?.DestinatarioEndereco || 'AVENIDA DASS, 100 - DISTRITO INDUSTRIAL';
+                          const destinatarioBairro = parsedInfo?.DestinatarioBairro || 'COQUEIRO';
+                          const destinatarioCEP = parsedInfo?.DestinatarioCEP || '62500-000';
+                          const destinatarioCidade = parsedInfo?.DestinatarioCidade || 'ITAPIPOCA';
+                          const destinatarioUF = parsedInfo?.DestinatarioUF || 'CE';
+                          const destinatarioIE = parsedInfo?.DestinatarioIE || '06.953.483-1';
+                          
+                          const valorTotal = parsedInfo?.ValorTotal || selectedDocsAwb?.Valor || '15.240,00';
+                          const valorProdutos = parsedInfo?.ValorProdutos || valorTotal;
+                          
+                          // Usar valor do ICMS se extraído do PDF, senão estimamos 18%
+                          let valorIcms = parsedInfo?.ValorIcms || '0,00';
+                          if (valorIcms === '0,00' || !parsedInfo?.ValorIcms) {
+                            try {
+                              const numericTotal = parseFloat(valorTotal.replace(/\./g, '').replace(',', '.'));
+                              if (!isNaN(numericTotal)) {
+                                valorIcms = (numericTotal * 0.18).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                              }
+                            } catch (e) {}
+                          }
+
+                          const pesoBruto = parsedInfo?.PesoBruto || '120,50';
+                          const pesoLiquido = parsedInfo?.PesoLiquido || '118,00';
+                          const volumes = parsedInfo?.Volumes || '12';
+                          const transportadora = parsedInfo?.Transportadora || selectedDocsAwb?.Transportadora || 'LATAM';
+
+                          // Formatar data
+                          let formattedDate = '';
+                          if (parsedInfo?.DataSaida) {
+                            const dParts = parsedInfo.DataSaida.split('-');
+                            if (dParts.length === 3) {
+                              formattedDate = `${dParts[2]}/${dParts[1]}/${dParts[0]}`;
+                            }
+                          }
+                          if (!formattedDate && selectedDocsAwb?.Saida) {
+                            const sParts = selectedDocsAwb.Saida.split('-');
+                            if (sParts.length === 3) {
+                              formattedDate = `${sParts[2]}/${sParts[1]}/${sParts[0]}`;
+                            }
+                          }
+                          if (!formattedDate) {
+                            formattedDate = new Date().toLocaleDateString('pt-BR');
+                          }
+
+                          const itensList = parsedInfo?.Itens || [
+                            {
+                              codigo: '1390716',
+                              descricao: parsedInfo?.Material || selectedDocsAwb?.Material || 'MATÉRIA PRIMA PARA CALÇADOS',
+                              ncm: '5806.32.00',
+                              cst: '000',
+                              cfop: '5101',
+                              unid: 'M',
+                              qtd: volumes,
+                              valorUnit: valorTotal,
+                              valorTotal: valorTotal
+                            }
+                          ];
 
                           return (
                             <div className="space-y-2 text-black font-sans">
@@ -3066,6 +3135,242 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
                                   </div>
                                   <div className="border-t border-slate-950 pt-1 mt-1 text-[6.5px] text-slate-700 text-center font-medium leading-none">
                                     Consulta no portal nacional da NF-e www.nfe.fazenda.gov.br
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Natureza da Operação / Inscrição Estadual / CNPJ Fornecedor */}
+                              <div className="grid grid-cols-12 border-x border-b border-slate-950 divide-x divide-slate-950 text-[6.5px]">
+                                <div className="col-span-6 p-1">
+                                  <span className="text-[5.5px] font-bold block uppercase text-slate-500">NATUREZA DA OPERAÇÃO</span>
+                                  <span className="font-bold uppercase text-slate-800">{naturezaOperacao}</span>
+                                </div>
+                                <div className="col-span-3 p-1">
+                                  <span className="text-[5.5px] font-bold block uppercase text-slate-500">INSCRIÇÃO ESTADUAL</span>
+                                  <span className="font-bold text-slate-800">{inscEstadualFornecedor}</span>
+                                </div>
+                                <div className="col-span-3 p-1">
+                                  <span className="text-[5.5px] font-bold block uppercase text-slate-500">CNPJ DO EMITENTE</span>
+                                  <span className="font-bold text-slate-800">{cnpjFornecedor}</span>
+                                </div>
+                              </div>
+
+                              {/* Destinatário / Remetente Section */}
+                              <div className="mt-1">
+                                <div className="bg-slate-100 px-1 py-0.5 border border-slate-950 text-[6px] font-extrabold text-slate-900 uppercase">
+                                  DESTINATÁRIO / REMETENTE
+                                </div>
+                                <div className="grid grid-cols-12 border-x border-b border-slate-950 divide-x divide-slate-950 text-[6.5px]">
+                                  <div className="col-span-7 p-1">
+                                    <span className="text-[5.5px] font-bold block uppercase text-slate-500">NOME / RAZÃO SOCIAL</span>
+                                    <span className="font-bold uppercase text-slate-800">{destinatarioNome}</span>
+                                  </div>
+                                  <div className="col-span-3 p-1">
+                                    <span className="text-[5.5px] font-bold block uppercase text-slate-500">CNPJ / CPF</span>
+                                    <span className="font-bold text-slate-800">{destinatarioCNPJ}</span>
+                                  </div>
+                                  <div className="col-span-2 p-1">
+                                    <span className="text-[5.5px] font-bold block uppercase text-slate-500">DATA DA EMISSÃO</span>
+                                    <span className="font-bold text-slate-800">{formattedDate}</span>
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-12 border-x border-b border-slate-950 divide-x divide-slate-950 text-[6.5px]">
+                                  <div className="col-span-5 p-1">
+                                    <span className="text-[5.5px] font-bold block uppercase text-slate-500">ENDEREÇO</span>
+                                    <span className="font-bold uppercase text-slate-800">{destinatarioEndereco}</span>
+                                  </div>
+                                  <div className="col-span-3 p-1">
+                                    <span className="text-[5.5px] font-bold block uppercase text-slate-500">BAIRRO / DISTRITO</span>
+                                    <span className="font-bold uppercase text-slate-800">{destinatarioBairro}</span>
+                                  </div>
+                                  <div className="col-span-2 p-1">
+                                    <span className="text-[5.5px] font-bold block uppercase text-slate-500">CEP</span>
+                                    <span className="font-bold text-slate-800">{destinatarioCEP}</span>
+                                  </div>
+                                  <div className="col-span-2 p-1">
+                                    <span className="text-[5.5px] font-bold block uppercase text-slate-500">DATA DA SAÍDA</span>
+                                    <span className="font-bold text-slate-800">{formattedDate}</span>
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-12 border-x border-b border-slate-950 divide-x divide-slate-950 text-[6.5px]">
+                                  <div className="col-span-5 p-1">
+                                    <span className="text-[5.5px] font-bold block uppercase text-slate-500">MUNICÍPIO</span>
+                                    <span className="font-bold uppercase text-slate-800">{destinatarioCidade}</span>
+                                  </div>
+                                  <div className="col-span-2 p-1">
+                                    <span className="text-[5.5px] font-bold block uppercase text-slate-500">FONE / FAX</span>
+                                    <span className="font-bold text-slate-800">-</span>
+                                  </div>
+                                  <div className="col-span-1 p-1">
+                                    <span className="text-[5.5px] font-bold block uppercase text-slate-500">UF</span>
+                                    <span className="font-bold text-slate-800">{destinatarioUF}</span>
+                                  </div>
+                                  <div className="col-span-2 p-1">
+                                    <span className="text-[5.5px] font-bold block uppercase text-slate-500">INSCRIÇÃO ESTADUAL</span>
+                                    <span className="font-bold text-slate-800">{destinatarioIE}</span>
+                                  </div>
+                                  <div className="col-span-2 p-1">
+                                    <span className="text-[5.5px] font-bold block uppercase text-slate-500">HORA DA SAÍDA</span>
+                                    <span className="font-bold text-slate-800">12:00:00</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Cálculo do Imposto Section */}
+                              <div className="mt-1">
+                                <div className="bg-slate-100 px-1 py-0.5 border border-slate-950 text-[6px] font-extrabold text-slate-900 uppercase">
+                                  CÁLCULO DO IMPOSTO
+                                </div>
+                                <div className="grid grid-cols-5 border-x border-b border-slate-950 divide-x divide-slate-950 text-[6.5px] text-right">
+                                  <div className="p-1">
+                                    <span className="text-[5.5px] font-bold block text-left uppercase text-slate-500">BASE DE CÁLCULO DO ICMS</span>
+                                    <span className="font-bold text-slate-800">R$ {valorTotal}</span>
+                                  </div>
+                                  <div className="p-1">
+                                    <span className="text-[5.5px] font-bold block text-left uppercase text-slate-500">VALOR DO ICMS</span>
+                                    <span className="font-bold text-slate-800">R$ {valorIcms}</span>
+                                  </div>
+                                  <div className="p-1">
+                                    <span className="text-[5.5px] font-bold block text-left uppercase text-slate-500">BASE DE CÁLCULO ICMS S.T.</span>
+                                    <span className="font-bold text-slate-800">R$ 0,00</span>
+                                  </div>
+                                  <div className="p-1">
+                                    <span className="text-[5.5px] font-bold block text-left uppercase text-slate-500">VALOR DO ICMS SUBSTITUIÇÃO</span>
+                                    <span className="font-bold text-slate-800">R$ 0,00</span>
+                                  </div>
+                                  <div className="p-1 col-span-1">
+                                    <span className="text-[5.5px] font-bold block text-left uppercase text-slate-500">VALOR TOTAL DOS PRODUTOS</span>
+                                    <span className="font-bold text-slate-800">R$ {valorProdutos}</span>
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-5 border-x border-b border-slate-950 divide-x divide-slate-950 text-[6.5px] text-right">
+                                  <div className="p-1">
+                                    <span className="text-[5.5px] font-bold block text-left uppercase text-slate-500">VALOR DO FRETE</span>
+                                    <span className="font-bold text-slate-800">R$ 0,00</span>
+                                  </div>
+                                  <div className="p-1">
+                                    <span className="text-[5.5px] font-bold block text-left uppercase text-slate-500">VALOR DO SEGURO</span>
+                                    <span className="font-bold text-slate-800">R$ 0,00</span>
+                                  </div>
+                                  <div className="p-1">
+                                    <span className="text-[5.5px] font-bold block text-left uppercase text-slate-500">DESCONTO</span>
+                                    <span className="font-bold text-slate-800">R$ 0,00</span>
+                                  </div>
+                                  <div className="p-1">
+                                    <span className="text-[5.5px] font-bold block text-left uppercase text-slate-500">OUTRAS DESPESAS ACESSÓRIAS</span>
+                                    <span className="font-bold text-slate-800">R$ 0,00</span>
+                                  </div>
+                                  <div className="p-1">
+                                    <span className="text-[5.5px] font-bold block text-left uppercase text-slate-500">VALOR TOTAL DA NOTA</span>
+                                    <span className="font-bold text-slate-800">R$ {valorTotal}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Transportador / Volumes Transportados Section */}
+                              <div className="mt-1">
+                                <div className="bg-slate-100 px-1 py-0.5 border border-slate-950 text-[6px] font-extrabold text-slate-900 uppercase">
+                                  TRANSPORTADOR / VOLUMES TRANSPORTADOS
+                                </div>
+                                <div className="grid grid-cols-12 border-x border-b border-slate-950 divide-x divide-slate-950 text-[6.5px]">
+                                  <div className="col-span-5 p-1">
+                                    <span className="text-[5.5px] font-bold block uppercase text-slate-500">RAZÃO SOCIAL</span>
+                                    <span className="font-bold uppercase text-slate-800">{transportadora}</span>
+                                  </div>
+                                  <div className="col-span-2 p-1">
+                                    <span className="text-[5.5px] font-bold block uppercase text-slate-500">FRETE POR CONTA</span>
+                                    <span className="font-bold uppercase text-slate-800">0-REMETENTE (CIF)</span>
+                                  </div>
+                                  <div className="col-span-1 p-1">
+                                    <span className="text-[5.5px] font-bold block uppercase text-slate-500">CÓDIGO ANTT</span>
+                                    <span className="font-bold text-slate-800">-</span>
+                                  </div>
+                                  <div className="col-span-2 p-1">
+                                    <span className="text-[5.5px] font-bold block uppercase text-slate-500">PLACA DO VEÍCULO</span>
+                                    <span className="font-bold text-slate-800">-</span>
+                                  </div>
+                                  <div className="col-span-2 p-1">
+                                    <span className="text-[5.5px] font-bold block uppercase text-slate-500">CNPJ / CPF</span>
+                                    <span className="font-bold text-slate-800">-</span>
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-12 border-x border-b border-slate-950 divide-x divide-slate-950 text-[6.5px]">
+                                  <div className="col-span-4 p-1">
+                                    <span className="text-[5.5px] font-bold block uppercase text-slate-500">QUANTIDADE</span>
+                                    <span className="font-bold text-slate-800">{volumes}</span>
+                                  </div>
+                                  <div className="col-span-2 p-1">
+                                    <span className="text-[5.5px] font-bold block uppercase text-slate-500">ESPÉCIE</span>
+                                    <span className="font-bold uppercase text-slate-800">VOLUMES</span>
+                                  </div>
+                                  <div className="col-span-2 p-1">
+                                    <span className="text-[5.5px] font-bold block uppercase text-slate-500">MARCA</span>
+                                    <span className="font-bold uppercase text-slate-800">DASS</span>
+                                  </div>
+                                  <div className="col-span-2 p-1">
+                                    <span className="text-[5.5px] font-bold block text-right uppercase text-slate-500">PESO BRUTO</span>
+                                    <span className="font-bold text-slate-800 text-right block">{pesoBruto} Kg</span>
+                                  </div>
+                                  <div className="col-span-2 p-1">
+                                    <span className="text-[5.5px] font-bold block text-right uppercase text-slate-500">PESO LÍQUIDO</span>
+                                    <span className="font-bold text-slate-800 text-right block">{pesoLiquido} Kg</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Dados dos Produtos / Serviços Section */}
+                              <div className="mt-1">
+                                <div className="bg-slate-100 px-1 py-0.5 border border-slate-950 text-[6px] font-extrabold text-slate-900 uppercase">
+                                  DADOS DOS PRODUTOS / SERVIÇOS
+                                </div>
+                                <table className="w-full border-x border-b border-slate-950 border-collapse text-[6px]">
+                                  <thead>
+                                    <tr className="border-b border-slate-950 bg-slate-50 font-bold divide-x divide-slate-950 text-[5.5px] text-center text-slate-700 uppercase">
+                                      <th className="p-0.5 w-[50px]">CÓD. PROD.</th>
+                                      <th className="p-0.5 text-left pl-1">DESCRIÇÃO DO PRODUTO / SERVIÇO</th>
+                                      <th className="p-0.5 w-[45px]">NCM/SH</th>
+                                      <th className="p-0.5 w-[20px]">CST</th>
+                                      <th className="p-0.5 w-[25px]">CFOP</th>
+                                      <th className="p-0.5 w-[20px]">UNID.</th>
+                                      <th className="p-0.5 w-[30px] text-right pr-1">QTD.</th>
+                                      <th className="p-0.5 w-[45px] text-right pr-1">V. UNITÁRIO</th>
+                                      <th className="p-0.5 w-[45px] text-right pr-1">V. TOTAL</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-300">
+                                    {itensList.map((item: any, idx: number) => (
+                                      <tr key={idx} className="divide-x divide-slate-950 font-medium text-slate-900 text-center">
+                                        <td className="p-0.5 font-mono">{item.codigo}</td>
+                                        <td className="p-0.5 text-left pl-1 font-sans font-bold text-[6.5px] uppercase">{item.descricao}</td>
+                                        <td className="p-0.5 font-mono">{item.ncm}</td>
+                                        <td className="p-0.5">{item.cst}</td>
+                                        <td className="p-0.5">{item.cfop}</td>
+                                        <td className="p-0.5">{item.unid}</td>
+                                        <td className="p-0.5 text-right pr-1">{item.qtd}</td>
+                                        <td className="p-0.5 text-right pr-1">{item.valorUnit}</td>
+                                        <td className="p-0.5 text-right pr-1">{item.valorTotal}</td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+
+                              {/* Dados Adicionais Section */}
+                              <div className="mt-1">
+                                <div className="bg-slate-100 px-1 py-0.5 border border-slate-950 text-[6px] font-extrabold text-slate-900 uppercase">
+                                  DADOS ADICIONAIS
+                                </div>
+                                <div className="grid grid-cols-12 border-x border-b border-slate-950 divide-x divide-slate-950 text-[6.5px] h-12">
+                                  <div className="col-span-8 p-1">
+                                    <span className="text-[5.5px] font-bold block uppercase text-slate-500">INFORMAÇÕES COMPLEMENTARES</span>
+                                    <span className="text-[5.5px] text-slate-700 font-sans leading-normal block">
+                                      RESERVADO AO FISCO. Mercadoria com destino para industrialização/comercialização.<br />
+                                      AWB: {selectedDocsAwb?.Awb || '-'}. Transportadora: {transportadora}. IMPORTADO COM SUCESSO.
+                                    </span>
+                                  </div>
+                                  <div className="col-span-4 p-1">
+                                    <span className="text-[5.5px] font-bold block uppercase text-slate-500">RESERVADO AO FISCO</span>
+                                    <span className="font-bold text-slate-800">-</span>
                                   </div>
                                 </div>
                               </div>

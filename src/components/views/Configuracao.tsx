@@ -1079,7 +1079,10 @@ export default function Configuracao({
                   >
                     <option value="Operador">Operador</option>
                     <option value="Auxiliar">Auxiliar</option> 
+                    <option value="Líder">Lider</option> 
                     <option value="Assistente">Assistente</option>
+                    <option value="Coordenador ">Coordenador </option> 
+                    <option value="Gerente  ">Gerente  </option> 
                     <option value="Admin">Administrador</option>
                   </select>
                 </div>
