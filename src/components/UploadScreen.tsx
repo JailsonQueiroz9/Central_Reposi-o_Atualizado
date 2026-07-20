@@ -159,9 +159,42 @@ export default function UploadScreen({ currentUser }: UploadScreenProps) {
     setSuccess(null);
 
     try {
+      // 1. Sanitize, optimize, and compress payload before sending to avoid CORS and Timeout errors
+      const sanitizedRows = parsedData.map(row => {
+        const cleanRow: any = {};
+        Object.keys(row).forEach(key => {
+          if (key !== '_rowIndex' && key.trim() !== '') {
+            const val = row[key];
+            if (val === undefined || val === null) {
+              cleanRow[key] = '';
+            } else if (typeof val === 'number') {
+              if (Number.isNaN(val) || !Number.isFinite(val)) {
+                cleanRow[key] = '';
+              } else {
+                cleanRow[key] = val; // Keep numbers
+              }
+            } else if (val instanceof Date) {
+              cleanRow[key] = val.toISOString().split('T')[0];
+            } else {
+              const strVal = String(val).trim();
+              cleanRow[key] = strVal;
+            }
+          }
+        });
+        return cleanRow;
+      }).filter(row => {
+        // Filter out completely blank rows (a very common issue with XLSX exports)
+        const nonBlankValues = Object.values(row).filter(v => v !== '' && v !== null && v !== undefined);
+        return nonBlankValues.length > 0;
+      });
+
+      if (sanitizedRows.length === 0) {
+        throw new Error('Nenhum dado válido encontrado após filtrar linhas vazias.');
+      }
+
       const result = await api.post('importSheetData', {
         sheetName: targetSheet,
-        rows: parsedData
+        rows: sanitizedRows
       });
 
       // Invalidate relevant cache keys
@@ -170,7 +203,7 @@ export default function UploadScreen({ currentUser }: UploadScreenProps) {
       }
       dataCache.invalidate('painelData');
 
-      setSuccess(`Planilha sincronizada com sucesso! Foram carregadas ${parsedData.length} linhas na aba "${targetSheet}".`);
+      setSuccess(`Planilha sincronizada com sucesso! Foram carregadas ${sanitizedRows.length} linhas válidas na aba "${targetSheet}" (linhas vazias foram ignoradas para otimização).`);
       
       // Auto reset after some time
       setTimeout(() => {
@@ -178,7 +211,7 @@ export default function UploadScreen({ currentUser }: UploadScreenProps) {
       }, 5000);
     } catch (err: any) {
       console.error('Erro de sincronização:', err);
-      setError(err.message || 'Falha ao sincronizar os dados com a planilha Google. Tente novamente.');
+      setError(err.message || 'Falha ao sincronizar os dados com a planilha Google. Certifique-se de que o arquivo não é excessivamente grande e tente novamente.');
     } finally {
       setSyncing(false);
     }

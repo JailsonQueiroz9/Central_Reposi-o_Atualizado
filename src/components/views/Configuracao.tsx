@@ -24,7 +24,16 @@ import {
   Box,
   Activity,
   Plus,
-  FileUp
+  FileUp,
+  Wifi,
+  WifiOff,
+  RefreshCw,
+  Radio,
+  Server,
+  Clock,
+  History,
+  Globe,
+  AlertTriangle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { api } from '@/lib/api';
@@ -63,12 +72,12 @@ const MODULES = [
   { key: 'followup', label: 'Follow-up' },
   { key: 'chat', label: 'Chat' },
   { key: 'config', label: 'Configuração' },
-] as const;
+ ] as const;
 
 interface ConfiguracaoProps {
   currentUser?: any;
   onUpdateCurrentUser?: (user: any) => void;
-  activeTab?: 'acesso' | 'perfil' | 'chat_upload';
+  activeTab?: 'acesso' | 'perfil' | 'chat_upload' | 'conexao';
 }
 
 export default function Configuracao({ 
@@ -77,7 +86,7 @@ export default function Configuracao({
   activeTab: forcedActiveTab
 }: ConfiguracaoProps) {
   const isAdmin = currentUser?.role === 'Admin' || currentUser?.['PAPEL'] === 'Admin';
-  const [activeTab, setActiveTab] = useState<'acesso' | 'perfil' | 'chat_upload'>(
+  const [activeTab, setActiveTab] = useState<'acesso' | 'perfil' | 'chat_upload' | 'conexao'>(
     forcedActiveTab || (isAdmin ? 'acesso' : 'perfil')
   );
   const [activeSubTab, setActiveSubTab] = useState<'chat' | 'upload'>('chat');
@@ -93,6 +102,83 @@ export default function Configuracao({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newUser, setNewUser] = useState({ name: '', role: 'Operador', email: '', password: '' });
   const [savingId, setSavingId] = useState<number | null>(null);
+
+  // States for Connection status
+  const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [isTestingConnection, setIsTestingConnection] = useState(false);
+  const [connectionLatency, setConnectionLatency] = useState<number | null>(null);
+  const [apiConnectionStatus, setApiConnectionStatus] = useState<'checking' | 'online' | 'offline' | 'error'>('checking');
+  const [connectionHistory, setConnectionHistory] = useState<Array<{
+    timestamp: string;
+    latency: number;
+    status: 'online' | 'offline' | 'slow';
+    message: string;
+  }>>([]);
+
+  const runPingTest = async () => {
+    if (isTestingConnection) return;
+    setIsTestingConnection(true);
+    setApiConnectionStatus('checking');
+
+    const startTime = Date.now();
+    try {
+      const result = await api.post('getParametros', {});
+      const endTime = Date.now();
+      const currentLatency = endTime - startTime;
+
+      setConnectionLatency(currentLatency);
+      
+      let status: 'online' | 'slow' = 'online';
+      let msg = 'Conexão excelente com a API';
+
+      if (currentLatency > 1500) {
+        status = 'slow';
+        msg = 'Conexão lenta detectada';
+        setApiConnectionStatus('online');
+      } else {
+        setApiConnectionStatus('online');
+      }
+
+      const newTest = {
+        timestamp: new Date().toLocaleTimeString(),
+        latency: currentLatency,
+        status,
+        message: msg
+      };
+
+      setConnectionHistory(prev => [newTest, ...prev.slice(0, 9)]);
+    } catch (error: any) {
+      console.error('Connection test failed:', error);
+      setApiConnectionStatus('offline');
+      setConnectionLatency(null);
+
+      const newTest = {
+        timestamp: new Date().toLocaleTimeString(),
+        latency: 0,
+        status: 'offline' as const,
+        message: error.message || 'Erro de conexão com o servidor'
+      };
+      setConnectionHistory(prev => [newTest, ...prev.slice(0, 9)]);
+    } finally {
+      setIsTestingConnection(false);
+    }
+  };
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    // Run first ping check
+    runPingTest();
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   const [openMenuId, setOpenMenuId] = useState<any | null>(null);
   const [editingUser, setEditingUser] = useState<any | null>(null);
@@ -616,6 +702,17 @@ export default function Configuracao({
               <MessageCircle size={16} />
               Chat Interno e upload
             </button>
+            <button
+              onClick={() => setActiveTab('conexao')}
+              className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-all duration-150 cursor-pointer ${
+                activeTab === 'conexao'
+                  ? 'border-blue-600 text-blue-600 bg-blue-50/50'
+                  : 'border-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-100/50'
+              }`}
+            >
+              <Radio size={16} className="text-orange-500 animate-pulse" />
+              Verificar Conexão
+            </button>
           </div>
         )}
 
@@ -623,7 +720,48 @@ export default function Configuracao({
         <div className="flex-1">
           {/* TAB 1: CONTROLE DE ACESSO */}
           {activeTab === 'acesso' && isAdmin && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="space-y-4">
+              {/* Mini Connection Status Widget */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4.5 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
+                    <Radio size={20} className={isTestingConnection ? "animate-pulse text-orange-500" : "text-blue-600"} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-800">Conexão com a Base de Dados (Google Sheets)</h3>
+                    <p className="text-xs text-gray-500 flex flex-wrap items-center gap-2 mt-1 font-medium">
+                      <span>Status de Rede:</span>
+                      <span className={`inline-flex items-center gap-1 font-bold ${isOnline ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        {isOnline ? <Wifi size={12} /> : <WifiOff size={12} />}
+                        {isOnline ? 'Online' : 'Desconectado'}
+                      </span>
+                      <span className="text-gray-300">|</span>
+                      <span>Status do Servidor:</span>
+                      <span className={`font-bold ${apiConnectionStatus === 'online' ? 'text-emerald-600' : apiConnectionStatus === 'checking' ? 'text-amber-500' : 'text-rose-600'}`}>
+                        {apiConnectionStatus === 'online' ? 'Operacional' : apiConnectionStatus === 'checking' ? 'Verificando...' : 'Sem Resposta'}
+                      </span>
+                      {connectionLatency !== null && (
+                        <>
+                          <span className="text-gray-300">|</span>
+                          <span>Latência:</span>
+                          <span className="font-extrabold text-gray-700">{connectionLatency}ms</span>
+                        </>
+                      )}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={runPingTest}
+                  disabled={isTestingConnection}
+                  className="bg-gray-50 hover:bg-gray-100 text-gray-700 font-bold border border-gray-200 px-4 py-2.5 rounded-xl text-xs flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw size={13} className={isTestingConnection ? "animate-spin" : ""} />
+                  {isTestingConnection ? 'Verificando...' : 'Testar Conexão'}
+                </button>
+              </div>
+
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               {loading ? (
                 <div className="flex flex-col items-center justify-center py-20 gap-4">
                   <Loader2 className="animate-spin text-blue-600" size={40} />
@@ -832,131 +970,256 @@ export default function Configuracao({
                 </div>
               )}
             </div>
+          </div>
           )}
 
           {/* TAB 2: PERFIL DE USUÁRIOS */}
-          {activeTab === 'perfil' && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {/* Left Column: Summary Info Card */}
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col items-center text-center">
-                <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-blue-600 to-sky-500 flex items-center justify-center text-white text-3xl font-extrabold shadow-md mb-4 uppercase">
-                  {profileName ? profileName.substring(0, 2) : 'US'}
-                </div>
-                <h3 className="text-xl font-bold text-gray-800 flex items-center gap-1.5 justify-center">
-                  {profileName}
-                  {isAdmin && <BadgeCheck className="text-blue-600" size={18} />}
-                </h3>
-                <p className="text-sm text-gray-500 mb-4">{profileEmail}</p>
-                
-                <span className={`px-3 py-1.5 rounded-full text-xs font-semibold uppercase tracking-wider mb-6 ${
-                  isAdmin ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'
-                }`}>
-                  {isAdmin ? 'Administrador' : 'Operador'}
-                </span>
+          {activeTab === 'perfil' && (() => {
+            const userRole = currentUser?.role || currentUser?.['PAPEL'] || currentUser?.Papel || 'Operador';
+            
+            // Modern, dynamic badges based on roles
+            const getRoleStyles = (role: string) => {
+              const normalized = String(role || '').trim().toUpperCase();
+              if (normalized === 'ADMIN' || normalized === 'ADMINISTRADOR') {
+                return {
+                  label: 'Administrador',
+                  bg: 'bg-red-50 text-red-700 border-red-200/60 bg-gradient-to-tr from-red-50 to-rose-100/40',
+                  iconColor: 'text-red-500'
+                };
+              }
+              if (normalized === 'COORDENADOR') {
+                return {
+                  label: 'Coordenador',
+                  bg: 'bg-orange-50 text-orange-800 border-orange-200/60 bg-gradient-to-tr from-orange-50/70 to-amber-100/50',
+                  iconColor: 'text-orange-500'
+                };
+              }
+              if (normalized === 'GERENTE') {
+                return {
+                  label: 'Gerente',
+                  bg: 'bg-purple-50 text-purple-800 border-purple-200/60 bg-gradient-to-tr from-purple-50/70 to-indigo-100/50',
+                  iconColor: 'text-purple-500'
+                };
+              }
+              if (normalized === 'LIDER' || normalized === 'LÍDER') {
+                return {
+                  label: 'Líder',
+                  bg: 'bg-indigo-50 text-indigo-800 border-indigo-200/60 bg-gradient-to-tr from-indigo-50/70 to-blue-100/50',
+                  iconColor: 'text-indigo-500'
+                };
+              }
+              if (normalized === 'ASSISTENTE') {
+                return {
+                  label: 'Assistente',
+                  bg: 'bg-teal-50 text-teal-800 border-teal-200/60 bg-gradient-to-tr from-teal-50/70 to-cyan-100/50',
+                  iconColor: 'text-teal-500'
+                };
+              }
+              if (normalized === 'AUXILIAR') {
+                return {
+                  label: 'Auxiliar',
+                  bg: 'bg-slate-100 text-slate-800 border-slate-200 bg-gradient-to-tr from-slate-50 to-slate-100',
+                  iconColor: 'text-slate-500'
+                };
+              }
+              // Fallback Operador
+              return {
+                label: role || 'Operador',
+                bg: 'bg-blue-50 text-blue-700 border-blue-200/60 bg-gradient-to-tr from-blue-50 to-sky-100/40',
+                iconColor: 'text-blue-500'
+              };
+            };
 
-                <div className="w-full border-t border-gray-100 pt-6 space-y-3 text-left">
-                  <div className="flex justify-between text-xs text-gray-500">
-                    <span>Status da Conta:</span>
-                    <span className="font-semibold text-green-600 flex items-center gap-1">
-                      <Check size={12} /> Ativo
-                    </span>
-                  </div>
-                  <div className="flex justify-between text-xs text-gray-500">
-                    <span>ID do Usuário:</span>
-                    <span className="font-mono text-[11px] text-gray-600">{currentUser?.ID || currentUser?.id || 'N/D'}</span>
-                  </div>
-                </div>
-              </div>
+            const roleStyle = getRoleStyles(userRole);
 
-              {/* Right Column: Edit Profile Form */}
-              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 md:col-span-2">
-                <h3 className="text-lg font-bold text-gray-800 mb-4 pb-3 border-b border-gray-100 flex items-center gap-2">
-                  <User size={18} className="text-blue-600" />
-                  Editar Detalhes do Perfil
-                </h3>
-
-                {profileSuccess && (
-                  <div className="mb-4 bg-green-50 border border-green-200 text-green-800 p-4 rounded-lg flex items-center gap-3">
-                    <CheckCircle2 className="text-green-600 flex-shrink-0" size={20} />
-                    <span className="text-sm font-medium">Perfil atualizado com sucesso no banco de dados!</span>
-                  </div>
-                )}
-
-                {profileError && (
-                  <div className="mb-4 bg-red-50 border border-red-200 text-red-800 p-4 rounded-lg flex items-center gap-3">
-                    <XCircle className="text-red-600 flex-shrink-0" size={20} />
-                    <span className="text-sm font-medium">{profileError}</span>
-                  </div>
-                )}
-
-                <form onSubmit={handleUpdateProfile} className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1 flex items-center gap-1.5">
-                      <User size={16} className="text-gray-400" />
-                      Nome Completo
-                    </label>
-                    <input
-                      type="text"
-                      value={profileName}
-                      onChange={(e) => setProfileName(e.target.value)}
-                      className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 outline-none text-gray-800 text-sm font-medium"
-                      placeholder="Seu nome"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1 flex items-center gap-1.5">
-                      <Mail size={16} className="text-gray-400" />
-                      E-mail Institucional
-                    </label>
-                    <input
-                      type="email"
-                      value={profileEmail}
-                      onChange={(e) => setProfileEmail(e.target.value)}
-                      className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 outline-none text-gray-800 text-sm font-medium"
-                      placeholder="seu.email@grupodass.com.br"
-                      required
-                    />
+            return (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+                {/* Left Column: Premium Summary Info Card */}
+                <div className="bg-white rounded-2xl shadow-md border border-gray-150 overflow-hidden relative">
+                  {/* Visual Header Banner - Modern gradient mirroring sidebar accents */}
+                  <div className="h-28 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-950 w-full relative overflow-hidden flex items-center justify-center">
+                    <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#f97316_1px,transparent_1px)] [background-size:16px_16px]"></div>
+                    <div className="absolute top-2 right-4 flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-extrabold text-orange-500 bg-slate-900/65 px-2 py-0.5 rounded border border-slate-800">
+                      <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
+                      <span>SISTEMA ATIVO</span>
+                    </div>
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-1 flex items-center gap-1.5">
-                      <KeyRound size={16} className="text-gray-400" />
-                      Alterar Senha (Opcional)
-                    </label>
-                    <input
-                      type="password"
-                      value={profilePassword}
-                      onChange={(e) => setProfilePassword(e.target.value)}
-                      className="w-full px-3.5 py-2.5 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 outline-none text-gray-800 text-sm font-medium"
-                      placeholder="Deixe em branco para manter a senha atual"
-                    />
-                  </div>
+                  {/* Body Content with Overlapping Avatar */}
+                  <div className="px-6 pb-8 pt-0 flex flex-col items-center text-center relative">
+                    {/* circular avatar overlapping the header */}
+                    <div className="relative -mt-14 mb-4">
+                      <div className="w-28 h-28 rounded-full bg-gradient-to-tr from-orange-500 to-amber-600 flex items-center justify-center text-white text-4xl font-black shadow-xl border-4 border-white transition-transform duration-300 hover:scale-105">
+                        {profileName ? profileName.substring(0, 2).toUpperCase() : 'US'}
+                      </div>
+                      {/* Floating pulse active badge */}
+                      <span className="absolute bottom-1 right-1 flex h-5 w-5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-5 w-5 bg-green-500 border-4 border-white shadow"></span>
+                      </span>
+                    </div>
 
-                  <div className="pt-4 flex justify-end">
-                    <button
-                      type="submit"
-                      disabled={isSavingProfile}
-                      className="bg-blue-600 text-white px-5 py-2.5 rounded-lg flex items-center gap-2 hover:bg-blue-700 transition-colors shadow-sm font-semibold text-sm disabled:opacity-50 cursor-pointer"
-                    >
-                      {isSavingProfile ? (
-                        <>
-                          <Loader2 size={16} className="animate-spin" />
-                          Salvando...
-                        </>
-                      ) : (
-                        <>
-                          <Save size={16} />
-                          Salvar Perfil
-                        </>
+                    <h3 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2 justify-center">
+                      {profileName}
+                      {isAdmin && (
+                        <span className="inline-flex items-center justify-center bg-blue-100 text-blue-800 p-0.5 rounded-full" title="Administrador Autorizado">
+                          <BadgeCheck className="text-blue-600" size={18} />
+                        </span>
                       )}
-                    </button>
+                    </h3>
+                    <p className="text-sm font-semibold text-gray-400 mb-6 flex items-center gap-1.5 justify-center">
+                      <Mail size={14} className="text-gray-300" />
+                      {profileEmail}
+                    </p>
+                    
+                    {/* Modern Badge styling */}
+                    <div className="mb-8">
+                      <span className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider border ${roleStyle.bg} shadow-sm`}>
+                        {roleStyle.label}
+                      </span>
+                    </div>
+
+                    {/* Corporate Specs block */}
+                    <div className="w-full border-t border-gray-100 pt-6 text-left">
+                      <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4">
+                        Informações Corporativas
+                      </h4>
+                      
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50/50 border border-gray-100">
+                          <div className="flex items-center gap-2.5">
+                            <Shield size={16} className={`${roleStyle.iconColor}`} />
+                            <span className="text-xs font-bold text-slate-500">Cargo / Função</span>
+                          </div>
+                          <span className="text-xs font-extrabold text-slate-700 uppercase tracking-tight">{roleStyle.label}</span>
+                        </div>
+
+                        <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50/50 border border-gray-100">
+                          <div className="flex items-center gap-2.5">
+                            <Lock size={16} className="text-slate-400" />
+                            <span className="text-xs font-bold text-slate-500">Unidade</span>
+                          </div>
+                          <span className="text-xs font-extrabold text-slate-700">Grupo Dass</span>
+                        </div>
+
+                        <div className="flex items-center justify-between p-3 rounded-xl bg-gray-50/50 border border-gray-100">
+                          <div className="flex items-center gap-2.5">
+                            <Check size={16} className="text-green-500" />
+                            <span className="text-xs font-bold text-slate-500">Status de Acesso</span>
+                          </div>
+                          <span className="text-xs font-extrabold text-green-600 flex items-center gap-1">
+                            Ativo
+                          </span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </form>
+                </div>
+
+                {/* Right Column: Edit Profile Form */}
+                <div className="bg-white rounded-2xl shadow-md border border-gray-150 p-6 lg:col-span-2">
+                  <div className="border-l-4 border-orange-500 pl-4 mb-6">
+                    <h3 className="text-xl font-black text-slate-800 flex items-center gap-2.5">
+                      <User size={22} className="text-orange-500" />
+                      Editar Detalhes do Perfil
+                    </h3>
+                    <p className="text-xs text-gray-400 mt-1">Atualize seus dados pessoais e modifique sua senha de acesso ao sistema.</p>
+                  </div>
+
+                  {profileSuccess && (
+                    <div className="mb-6 bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl flex items-center gap-3 shadow-sm animate-fadeIn">
+                      <CheckCircle2 className="text-emerald-600 flex-shrink-0 animate-bounce" size={20} />
+                      <div>
+                        <span className="text-sm font-bold block">Sucesso!</span>
+                        <span className="text-xs text-emerald-700">Perfil atualizado com sucesso no banco de dados!</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {profileError && (
+                    <div className="mb-6 bg-rose-50 border border-rose-200 text-rose-800 p-4 rounded-xl flex items-center gap-3 shadow-sm">
+                      <XCircle className="text-rose-600 flex-shrink-0" size={20} />
+                      <div>
+                        <span className="text-sm font-bold block">Falha na atualização</span>
+                        <span className="text-xs text-rose-700">{profileError}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <form onSubmit={handleUpdateProfile} className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                          <User size={14} className="text-gray-400" />
+                          Nome Completo
+                        </label>
+                        <input
+                          type="text"
+                          value={profileName}
+                          onChange={(e) => setProfileName(e.target.value)}
+                          className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50/30 focus:bg-white focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none text-slate-800 text-sm font-semibold transition-all duration-200 hover:border-gray-300"
+                          placeholder="Seu nome completo"
+                          required
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                          <Mail size={14} className="text-gray-400" />
+                          E-mail Institucional
+                        </label>
+                        <input
+                          type="email"
+                          value={profileEmail}
+                          onChange={(e) => setProfileEmail(e.target.value)}
+                          className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-gray-50/30 focus:bg-white focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none text-slate-800 text-sm font-semibold transition-all duration-200 hover:border-gray-300"
+                          placeholder="seu.email@grupodass.com.br"
+                          required
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5 bg-gray-50/50 p-4 rounded-xl border border-gray-100">
+                      <label className="text-xs font-bold text-gray-600 uppercase tracking-wider flex items-center gap-1.5">
+                        <KeyRound size={14} className="text-slate-400" />
+                        Alterar Senha de Acesso
+                      </label>
+                      <input
+                        type="password"
+                        value={profilePassword}
+                        onChange={(e) => setProfilePassword(e.target.value)}
+                        className="w-full px-4 py-3 border border-gray-200 rounded-xl bg-white focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none text-slate-800 text-sm font-semibold transition-all duration-200"
+                        placeholder="Deixe em branco para manter a senha atual"
+                      />
+                      <p className="text-[10px] text-gray-400 font-medium pt-1">
+                        Dica de segurança: utilize letras maiúsculas, minúsculas e números para uma senha mais segura.
+                      </p>
+                    </div>
+
+                    <div className="pt-4 flex justify-end">
+                      <button
+                        type="submit"
+                        disabled={isSavingProfile}
+                        className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-extrabold px-6 py-3 rounded-xl transition-all duration-200 shadow-md hover:shadow-lg flex items-center gap-2 hover:-translate-y-0.5 transform disabled:opacity-50 cursor-pointer text-sm"
+                      >
+                        {isSavingProfile ? (
+                          <>
+                            <Loader2 size={16} className="animate-spin" />
+                            <span>Salvando Alterações...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Save size={16} />
+                            <span>Salvar Configurações</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </form>
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* TAB 3: CHAT INTERNO E UPLOAD */}
           {activeTab === 'chat_upload' && (
@@ -995,6 +1258,185 @@ export default function Configuracao({
                 ) : (
                   <UploadScreen currentUser={currentUser} />
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: VERIFICAR CONEXÃO */}
+          {activeTab === 'conexao' && (
+            <div className="space-y-6">
+              <div className="border-l-4 border-orange-500 pl-4 mb-2">
+                <h3 className="text-xl font-black text-slate-800 flex items-center gap-2.5">
+                  <Radio className="text-orange-500 animate-pulse" size={24} />
+                  Diagnóstico de Conectividade
+                </h3>
+                <p className="text-xs text-gray-500 mt-1">
+                  Monitore o estado e a latência de sua conexão com os servidores do Google Sheets e Apps Script em tempo real.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Internet Status Card */}
+                <div className="bg-white rounded-2xl border border-gray-200 p-6 flex flex-col justify-between h-52 relative overflow-hidden shadow-sm hover:border-gray-300 transition-all duration-300">
+                  <div className="absolute top-0 right-0 transform translate-x-4 -translate-y-4 opacity-5 pointer-events-none text-gray-400">
+                    <Globe size={140} />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="p-3 rounded-xl bg-gray-50">
+                      {isOnline ? (
+                        <Wifi className="text-emerald-600" size={24} />
+                      ) : (
+                        <WifiOff className="text-rose-600" size={24} />
+                      )}
+                    </div>
+                    <span className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full border ${
+                      isOnline ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                    }`}>
+                      {isOnline ? 'CONECTADO' : 'SEM INTERNET'}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1 z-10">
+                    <h3 className="text-gray-400 text-xs font-bold uppercase tracking-widest">Sua Internet</h3>
+                    <p className="text-xl font-black text-slate-800 tracking-tight">
+                      {isOnline ? 'Navegador Online' : 'Desconectado'}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      Seu dispositivo possui uma conexão ativa com a internet.
+                    </p>
+                  </div>
+                </div>
+
+                {/* API Server Status Card */}
+                <div className="bg-white rounded-2xl border border-gray-200 p-6 flex flex-col justify-between h-52 relative overflow-hidden shadow-sm hover:border-gray-300 transition-all duration-300">
+                  <div className="absolute top-0 right-0 transform translate-x-4 -translate-y-4 opacity-5 pointer-events-none text-gray-400">
+                    <Server size={140} />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="p-3 rounded-xl bg-gray-50">
+                      <Server className={
+                        apiConnectionStatus === 'online' ? 'text-emerald-600' :
+                        apiConnectionStatus === 'checking' ? 'text-amber-500 animate-spin' : 'text-rose-600'
+                      } size={24} />
+                    </div>
+                    <span className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full border ${
+                      apiConnectionStatus === 'online' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                      apiConnectionStatus === 'checking' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                    }`}>
+                      {apiConnectionStatus === 'online' ? 'OPERACIONAL' : apiConnectionStatus === 'checking' ? 'TESTANDO' : 'INDISPONÍVEL'}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1 z-10">
+                    <h3 className="text-gray-400 text-xs font-bold uppercase tracking-widest">Banco de Dados</h3>
+                    <p className="text-xl font-black text-slate-800 tracking-tight">
+                      {apiConnectionStatus === 'online' ? 'Google Sheets' : apiConnectionStatus === 'checking' ? 'Consultando...' : 'Sem Resposta'}
+                    </p>
+                    <p className="text-xs text-gray-500 truncate" title="API ativa baseada no Google Apps Script">
+                      Integridade com Google Apps Script
+                    </p>
+                  </div>
+                </div>
+
+                {/* Latency Card */}
+                <div className={`bg-white rounded-2xl border p-6 flex flex-col justify-between h-52 relative overflow-hidden shadow-sm hover:border-gray-300 transition-all duration-300 ${
+                  connectionLatency === null ? 'border-gray-200' :
+                  connectionLatency < 400 ? 'border-emerald-200 bg-emerald-50/10' :
+                  connectionLatency < 1200 ? 'border-amber-200 bg-amber-50/10' : 'border-rose-200 bg-rose-50/10'
+                }`}>
+                  <div className="absolute top-0 right-0 transform translate-x-4 -translate-y-4 opacity-5 pointer-events-none text-gray-400">
+                    <Clock size={140} />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="p-3 rounded-xl bg-gray-50">
+                      <Clock className={
+                        connectionLatency === null ? 'text-gray-400' :
+                        connectionLatency < 400 ? 'text-emerald-600' :
+                        connectionLatency < 1200 ? 'text-amber-500' : 'text-rose-600'
+                      } size={24} />
+                    </div>
+                    <span className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full border ${
+                      connectionLatency === null ? 'bg-gray-50 text-gray-600 border-gray-200' :
+                      connectionLatency < 400 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                      connectionLatency < 1200 ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-rose-50 text-rose-700 border-rose-200'
+                    }`}>
+                      LATÊNCIA
+                    </span>
+                  </div>
+
+                  <div className="space-y-1 z-10">
+                    <h3 className="text-gray-400 text-xs font-bold uppercase tracking-widest">Tempo de Resposta</h3>
+                    <p className={`text-3xl font-black tracking-tight ${
+                      connectionLatency === null ? 'text-gray-400' :
+                      connectionLatency < 400 ? 'text-emerald-600' :
+                      connectionLatency < 1200 ? 'text-amber-500' : 'text-rose-600'
+                    }`}>
+                      {connectionLatency !== null ? `${connectionLatency}ms` : '--'}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {connectionLatency === null ? 'Aguardando teste de conexão' :
+                       connectionLatency < 400 ? 'Velocidade excelente para salvar dados.' :
+                       connectionLatency < 1200 ? 'Latência moderada. Operações funcionais.' : 'Conexão lenta. Carregamentos podem demorar.'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* History Section */}
+              <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden p-6 shadow-sm">
+                <div className="flex items-center gap-2 text-slate-800 font-bold pb-3 border-b border-gray-100 mb-4">
+                  <History size={18} className="text-orange-500" />
+                  <span className="text-sm">Últimas Verificações nesta Sessão</span>
+                </div>
+
+                {connectionHistory.length === 0 ? (
+                  <div className="p-8 text-center text-gray-400 flex flex-col items-center gap-3">
+                    <Radio size={36} className="text-gray-300 animate-pulse" />
+                    <span className="text-xs font-semibold">Nenhum teste de conexão foi registrado nesta sessão.</span>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-gray-100 font-medium">
+                    {connectionHistory.map((test, idx) => (
+                      <div key={idx} className="py-3 flex items-center justify-between hover:bg-gray-50/50 transition-colors rounded-lg px-2">
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs font-mono text-gray-400">{test.timestamp}</span>
+                          <span className={`inline-flex items-center gap-1.5 text-xs font-bold ${
+                            test.status === 'online' ? 'text-emerald-600' :
+                            test.status === 'slow' ? 'text-amber-600' : 'text-rose-600'
+                          }`}>
+                            {test.status === 'online' && <CheckCircle2 size={14} className="text-emerald-500" />}
+                            {test.status === 'slow' && <AlertTriangle size={14} className="text-amber-500" />}
+                            {test.status === 'offline' && <WifiOff size={14} className="text-rose-500" />}
+                            {test.message}
+                          </span>
+                        </div>
+                        <span className={`text-xs font-black px-2.5 py-1 rounded bg-gray-50 border ${
+                          test.latency === 0 ? 'border-rose-200 text-rose-600 bg-rose-50/10' :
+                          test.latency < 400 ? 'border-emerald-200 text-emerald-600 bg-emerald-50/10' :
+                          test.latency < 1200 ? 'border-amber-200 text-amber-600 bg-amber-50/10' : 'border-rose-200 text-rose-600 bg-rose-50/10'
+                        }`}>
+                          {test.latency === 0 ? 'OFFLINE' : `${test.latency} ms`}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Action Button */}
+              <div className="flex justify-center pt-2">
+                <button
+                  type="button"
+                  onClick={runPingTest}
+                  disabled={isTestingConnection}
+                  className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-extrabold px-8 py-3.5 rounded-xl transition-all duration-200 shadow-md hover:shadow-lg flex items-center gap-3 hover:-translate-y-0.5 transform disabled:opacity-50 cursor-pointer text-sm"
+                >
+                  <RefreshCw size={18} className={isTestingConnection ? 'animate-spin' : ''} />
+                  {isTestingConnection ? 'REALIZANDO PING TEST...' : 'DIAGNOSTICAR CONEXÃO AGORA'}
+                </button>
               </div>
             </div>
           )}

@@ -33,8 +33,14 @@ async function startServer() {
         throw new Error(`HTTP Error: ${response.status} ${response.statusText}`);
       }
 
-      const result = await response.json();
-      return result;
+      const responseText = await response.text();
+      try {
+        const result = JSON.parse(responseText);
+        return result;
+      } catch (jsonErr) {
+        console.error(`[Server API Parse Error] Action: ${action}. Raw Response preview:`, responseText.substring(0, 500));
+        throw new Error("Resposta inválida do servidor Google (provavelmente o limite de tempo da execução do script de 30 segundos do Apps Script foi atingido ou houve um erro interno na planilha).");
+      }
     } catch (error: any) {
       console.error(`[Server API Error] Action: ${action} - Error:`, error);
       return { success: false, error: error.message || "Erro de comunicação com o servidor Google Apps Script" };

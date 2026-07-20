@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { LayoutDashboard, FileText, Activity, MessageCircle, Settings, Menu, X, LogOut, Loader2, Download, Box, ClipboardList, CalendarClock, Layers, Shield, ChevronDown, ChevronRight, ShoppingCart, Scissors, FileUp, User } from 'lucide-react';
+import { LayoutDashboard, FileText, Activity, MessageCircle, Settings, Menu, X, LogOut, Loader2, Download, Box, ClipboardList, CalendarClock, Layers, Shield, ChevronDown, ChevronRight, ShoppingCart, Scissors, FileUp, User, Radio } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { api } from './lib/api';
 import { dataCache } from './lib/cache';
@@ -17,8 +17,9 @@ import DisponivelCentral from './components/views/DisponivelCentral';
 import Producao from './components/views/Producao';
 import ProgramacaoPCP from './components/views/ProgramacaoPCP';
 import UploadScreen from './components/UploadScreen';
+import StatusConexao from './components/views/StatusConexao';
 
-type ViewType = 'painel' | 'cadastro' | 'almox' | 'followup' | 'chat' | 'configuracao' | 'config_acesso' | 'config_perfil' | 'upload' | 'cadastroEntrega' | 'entregaDublagem' | 'disponivelCentral' | 'producao' | 'programacaoPCP';
+type ViewType = 'painel' | 'cadastro' | 'almox' | 'followup' | 'chat' | 'configuracao' | 'config_acesso' | 'config_perfil' | 'upload' | 'cadastroEntrega' | 'entregaDublagem' | 'disponivelCentral' | 'producao' | 'programacaoPCP' | 'status_conexao';
 
 const menuItems = [
   { id: 'painel', label: 'Painel (Status)', icon: LayoutDashboard, perm: 'painel' },
@@ -514,6 +515,7 @@ export default function App() {
         />
       );
       case 'upload': return <UploadScreen currentUser={user} />;
+      case 'status_conexao': return <StatusConexao />;
       case 'configuracao': return (
         <Configuracao 
           currentUser={user} 
