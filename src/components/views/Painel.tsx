@@ -46,7 +46,7 @@ export default function Painel() {
       let s = String(m['Status'] || '').trim().toUpperCase();
       if (s === 'MPOK') {
         const medida = String(m['Medida'] || '').toUpperCase().trim();
-        s = (medida === 'M²' || medida === 'M') ? 'SEPARAÇÃO M²' : 'SEPARAÇÃO AVIAMENTOS';
+        s = (medida === 'M²') ? 'SEPARAÇÃO M²' : 'SEPARAÇÃO AVIAMENTOS';
       }
       if (s && s !== 'STATUS') {
         stats.add(s);
@@ -81,7 +81,7 @@ export default function Painel() {
         let status = String(m['Status'] || '').trim().toUpperCase();
         if (status === 'MPOK') {
           const medida = String(m['Medida'] || '').toUpperCase().trim();
-          status = (medida === 'M²' || medida === 'M') ? 'SEPARAÇÃO M²' : 'SEPARAÇÃO AVIAMENTOS';
+          status = (medida === 'M²') ? 'SEPARAÇÃO M²' : 'SEPARAÇÃO AVIAMENTOS';
         }
         if (status !== selectedStatus) return false;
       }
@@ -255,7 +255,7 @@ export default function Painel() {
       
       if (rawStatus === 'MPOK') {
         const medida = String(curr['Medida'] || '').toUpperCase().trim();
-        rawStatus = (medida === 'M²' || medida === 'M') ? 'SEPARAÇÃO M²' : 'SEPARAÇÃO AVIAMENTOS';
+        rawStatus = (medida === 'M²') ? 'SEPARAÇÃO M²' : 'SEPARAÇÃO AVIAMENTOS';
       }
       
       const matchedKey = Object.keys(statusConfig).find(k => k.toUpperCase() === rawStatus);
@@ -285,7 +285,7 @@ export default function Painel() {
       let status = m['Status'] || 'Atualizado';
       if (String(status).toUpperCase().trim() === 'MPOK') {
         const medida = String(m['Medida'] || '').toUpperCase().trim();
-        status = (medida === 'M²' || medida === 'M') ? 'SEPARAÇÃO M²' : 'SEPARAÇÃO AVIAMENTOS';
+        status = (medida === 'M²') ? 'SEPARAÇÃO M²' : 'SEPARAÇÃO AVIAMENTOS';
       }
       return {
         ordem: m['Ordem'] || m['Ord_Rep'] || 'Desconhecida',
@@ -557,7 +557,7 @@ export default function Painel() {
                           {(() => {
                             const rawStatus = String(mat['Status']).toUpperCase().trim();
                             const medida = String(mat['Medida'] || '').toUpperCase().trim();
-                            const isM2 = medida === 'M²' || medida === 'M';
+                            const isM2 = medida === 'M²';
                             
                             let label = mat['Status'];
                             let styleClass = 'bg-gray-100 text-gray-700 border border-gray-200';

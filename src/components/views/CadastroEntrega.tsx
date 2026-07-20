@@ -146,9 +146,9 @@ export default function CadastroEntrega({ currentUser }: { currentUser?: any }) 
         Status: 'DISPONÍVEL NA CENTRAL'
       };
 
-      if (medida === 'M²' || medida === 'M') {
+      if (medida === 'M²') {
         updateData['Data_Ent_Almox.'] = formattedDate;
-      } else if (['PAR', 'UND', 'KG', 'MIL'].includes(medida)) {
+      } else if (['PAR', 'UND', 'KG', 'M', 'MIL'].includes(medida)) {
         updateData['Data_Ent_Avi'] = formattedDate;
       } else {
         // Fallback robust: update Data_Ent_Almox.

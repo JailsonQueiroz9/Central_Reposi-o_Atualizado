@@ -12,7 +12,7 @@ async function startServer() {
   // Helper to forward requests to the Google Apps Script Web App URL
   const appsScriptUrl = process.env.VITE_API_URL || 
                         process.env.VITE_APPS_SCRIPT_URL || 
-                        "https://script.google.com/macros/s/AKfycbzvlGDsADQm3iKpb5u3VYQPY4aznvNN7NS_Xc-45nasmPLqjLVtg6OZO-N0t1NK5v4Zfg/exec";
+                        "https://script.google.com/macros/s/AKfycbxJZC7qRIkZ-roT9AV4TDRKgV0hiW684LwRTvTG1oh0BOnohlFXcs7QBcXmX9cci-p5/exec";
 
   /**
    * Generic forwarder to maintain zero downtime/perfect compatibility with current Google Apps Script sheets database

@@ -65,7 +65,7 @@ export default function Almox() {
     if (!matchesSearch) return false;
 
     const medida = String(item['Medida'] || '').toUpperCase().trim();
-    const isM2 = medida === 'M²' || medida === 'M';
+    const isM2 = medida === 'M²';
 
     if (filter === 'PENDENTE') return rawStatus === 'MP PENDENTE';
     
@@ -91,14 +91,14 @@ export default function Almox() {
       const rawStatus = (m['Status'] || '').toUpperCase().trim();
       const s = rawStatus.replace(/Ç/g, 'C').replace(/[ÁÀÂÃ]/g, 'A');
       const medida = String(m['Medida'] || '').toUpperCase().trim();
-      const isM2 = medida === 'M²' || medida === 'M';
+      const isM2 = medida === 'M²';
       return s === 'SEPARACAO M²' || (rawStatus === 'MPOK' && isM2);
     }).length,
     aviamentos: materiais.filter(m => {
       const rawStatus = (m['Status'] || '').toUpperCase().trim();
       const s = rawStatus.replace(/Ç/g, 'C').replace(/[ÁÀÂÃ]/g, 'A');
       const medida = String(m['Medida'] || '').toUpperCase().trim();
-      const isM2 = medida === 'M²' || medida === 'M';
+      const isM2 = medida === 'M²';
       return s === 'SEPARACAO AVIAMENTOS' || (rawStatus === 'MPOK' && !isM2);
     }).length,
   };
@@ -266,7 +266,7 @@ function StatusBadge({ status, item }: { status: string; item?: any }) {
   
   if (raw === 'MPOK') {
     const medida = String(item?.['Medida'] || '').toUpperCase().trim();
-    if (medida === 'M²' || medida === 'M') {
+    if (medida === 'M²') {
       colors = 'bg-purple-100 text-purple-700 border border-purple-200 bg-gradient-to-r from-purple-50 to-orange-50';
       label = 'SEPARAÇÃO M²';
     } else {
