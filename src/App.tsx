@@ -209,6 +209,23 @@ export default function App() {
       }
 
       setUser(mergedUser);
+
+      // Pré-carregamento de dados pós-login bem-sucedido (Prefetch)
+      const prefetchPostLogin = async () => {
+        try {
+          await Promise.all([
+            api.post('getPainelData').then(d => dataCache.set('painelData', d)),
+            api.post('getWipData').then(d => dataCache.set('wipData', d)),
+            api.post('getParametros').then(d => dataCache.set('parametros', d)),
+            api.post('getMateriasData').then(d => dataCache.set('materiasData', d)),
+            api.post('getAwbData').then(d => dataCache.set('awbData', d))
+          ]);
+          console.log('[PERFORMANCE] Cache pós-login aquecido com sucesso!');
+        } catch (e) {
+          console.warn('[PERFORMANCE] Falha no prefetch pós-login:', e);
+        }
+      };
+      prefetchPostLogin();
       
       // Define a primeira visualização disponível baseada nas permissões
       const perms = mergedUser['Permissões de Tela (Módulos)'] || mergedUser.permissions;
@@ -266,7 +283,9 @@ export default function App() {
                   await Promise.all([
                     api.post('getPainelData').then(d => dataCache.set('painelData', d)),
                     api.post('getWipData').then(d => dataCache.set('wipData', d)),
-                    api.post('getParametros').then(d => dataCache.set('parametros', d))
+                    api.post('getParametros').then(d => dataCache.set('parametros', d)),
+                    api.post('getMateriasData').then(d => dataCache.set('materiasData', d)),
+                    api.post('getAwbData').then(d => dataCache.set('awbData', d))
                   ]);
                   console.log('[PERFORMANCE] Cache aquecido com sucesso!');
                 } catch (e) {

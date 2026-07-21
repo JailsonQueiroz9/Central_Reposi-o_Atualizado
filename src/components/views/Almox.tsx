@@ -30,20 +30,25 @@ export default function Almox() {
     if (force) {
       dataCache.invalidate('painelData');
     }
-    if (!silent) setLoading(true);
+    if (!silent && materiais.length === 0) setLoading(true);
     try {
-      const data = await dataCache.get('painelData', () => api.post('getPainelData'), 20000) || [];
-      // Ordena por data de registro central
-      const sorted = [...data].sort((a, b) => {
-        const da = new Date(a['Data_Reg_Central'] || 0).getTime();
-        const db = new Date(b['Data_Reg_Central'] || 0).getTime();
-        return db - da;
-      });
-      setMateriais(sorted);
+      await dataCache.swr(
+        'painelData',
+        () => api.post('getPainelData'),
+        (data) => {
+          const sorted = [...(data || [])].sort((a, b) => {
+            const da = new Date(a['Data_Reg_Central'] || 0).getTime();
+            const db = new Date(b['Data_Reg_Central'] || 0).getTime();
+            return db - da;
+          });
+          setMateriais(sorted);
+          setLoading(false);
+        },
+        20000
+      );
     } catch (error) {
       console.error('Erro ao buscar dados do almox:', error);
-    } finally {
-      if (!silent) setLoading(false);
+      setLoading(false);
     }
   };
 

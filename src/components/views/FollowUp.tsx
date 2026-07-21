@@ -230,32 +230,42 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
   });
 
   const fetchMaterias = async () => {
-    setLoadingMaterias(true);
+    if (materias.length === 0) {
+      setLoadingMaterias(true);
+    }
     try {
-      const data = await api.post('getMateriasData');
-      if (Array.isArray(data)) {
-        const normalized = data.map((item: any, idx: number) => {
-          const id = item.id || item.ID || (item.Documento ? `doc_${item.Documento}_${item.Produto || idx}` : '') || `materia-${idx}`;
-          return {
-            ...item,
-            id: String(id)
-          };
-        });
-        setMateriaisList(normalized);
-      } else {
-        setMateriaisList([]);
-      }
+      await dataCache.swr(
+        'materiasData',
+        () => api.post('getMateriasData'),
+        (data) => {
+          if (Array.isArray(data)) {
+            const normalized = data.map((item: any, idx: number) => {
+              const id = item.id || item.ID || (item.Documento ? `doc_${item.Documento}_${item.Produto || idx}` : '') || `materia-${idx}`;
+              return {
+                ...item,
+                id: String(id)
+              };
+            });
+            setMateriaisList(normalized);
+          } else {
+            setMateriaisList([]);
+          }
+          setLoadingMaterias(false);
+        },
+        20000
+      );
     } catch (error) {
       console.error('Erro ao buscar dados de matérias:', error);
       // Fallback em caso de offline/carregamento sem dados
-      setMateriaisList([
-        { id: 'm1', Produto: '1012560', Descrição: 'TECIDO K897/4 DUPLA FRONTURA AZUL', Quantidade: '750', Unidade: 'M²', Status: 'MPOK', Fornecedor: 'Textil Dass', Almox: 'CENTRAL-A' },
-        { id: 'm2', Produto: '637355', Descrição: 'ETIQUETA DE FABRICACAO LINGUETA ASICS', Quantidade: '100', Unidade: 'UN', Status: 'MPNG', Fornecedor: 'Etibras SA', Almox: 'CENTRAL-B' },
-        { id: 'm3', Produto: '627790', Descrição: 'FILME TPU ECOFUSION PRESS STAMPING', Quantidade: '154', Unidade: 'M', Status: 'MP TRÂNSITO', Fornecedor: 'TPU Importadora', Almox: 'DOCK-2' },
-        { id: 'm4', Produto: '1355754', Descrição: 'TECIDO KETTEN 1501 BRANCO 09 COMPRE', Quantidade: '230', Unidade: 'M²', Status: 'MPOK', Fornecedor: 'Inylbra Ltda', Almox: 'CENTRAL-A' },
-        { id: 'm5', Produto: '1391346', Descrição: 'TECIDO JACQUARD LOCALIZADO AZUL/CYAN', Quantidade: '0', Unidade: 'M²', Status: 'CRÍTICO', Fornecedor: 'Fitas Dass', Almox: 'SETOR-PCP' }
-      ]);
-    } finally {
+      if (materias.length === 0) {
+        setMateriaisList([
+          { id: 'm1', Produto: '1012560', Descrição: 'TECIDO K897/4 DUPLA FRONTURA AZUL', Quantidade: '750', Unidade: 'M²', Status: 'MPOK', Fornecedor: 'Textil Dass', Almox: 'CENTRAL-A' },
+          { id: 'm2', Produto: '637355', Descrição: 'ETIQUETA DE FABRICACAO LINGUETA ASICS', Quantidade: '100', Unidade: 'UN', Status: 'MPNG', Fornecedor: 'Etibras SA', Almox: 'CENTRAL-B' },
+          { id: 'm3', Produto: '627790', Descrição: 'FILME TPU ECOFUSION PRESS STAMPING', Quantidade: '154', Unidade: 'M', Status: 'MP TRÂNSITO', Fornecedor: 'TPU Importadora', Almox: 'DOCK-2' },
+          { id: 'm4', Produto: '1355754', Descrição: 'TECIDO KETTEN 1501 BRANCO 09 COMPRE', Quantidade: '230', Unidade: 'M²', Status: 'MPOK', Fornecedor: 'Inylbra Ltda', Almox: 'CENTRAL-A' },
+          { id: 'm5', Produto: '1391346', Descrição: 'TECIDO JACQUARD LOCALIZADO AZUL/CYAN', Quantidade: '0', Unidade: 'M²', Status: 'CRÍTICO', Fornecedor: 'Fitas Dass', Almox: 'SETOR-PCP' }
+        ]);
+      }
       setLoadingMaterias(false);
     }
   };
@@ -783,45 +793,53 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
   });
 
   const fetchAwbData = async () => {
-    setLoadingAwb(true);
+    if (awbList.length === 0) {
+      setLoadingAwb(true);
+    }
     try {
-      const data = await api.post('getAwbData');
-      if (Array.isArray(data)) {
-        const normalized = data.map((item: any, idx: number) => {
-          const id = item.id || item.ID || item.Awb || `awb-${idx}`;
-          let rastreio = item.Rastreio || '';
-          let transportadora = item.Transportadora;
-          
-          if (!transportadora) {
-            if (rastreio.includes('gollog')) {
-              transportadora = 'GOL';
-            } else if (rastreio.includes('azullogistica')) {
-              transportadora = 'AZUL';
-            } else {
-              transportadora = 'LATAM';
-            }
-          }
+      await dataCache.swr(
+        'awbData',
+        () => api.post('getAwbData'),
+        (data) => {
+          if (Array.isArray(data)) {
+            const normalized = data.map((item: any, idx: number) => {
+              const id = item.id || item.ID || item.Awb || `awb-${idx}`;
+              let rastreio = item.Rastreio || '';
+              let transportadora = item.Transportadora;
+              
+              if (!transportadora) {
+                if (rastreio.includes('gollog')) {
+                  transportadora = 'GOL';
+                } else if (rastreio.includes('azullogistica')) {
+                  transportadora = 'AZUL';
+                } else {
+                  transportadora = 'LATAM';
+                }
+              }
 
-          if (!rastreio || rastreio.includes('dhl.com')) {
-            if (transportadora === 'GOL') rastreio = 'https://servicos.gollog.com.br/app/site/tracking';
-            else if (transportadora === 'AZUL') rastreio = 'https://www.azullogistica.com.br/Rastreio';
-            else rastreio = 'https://www.latamcargo.com/pt/trackshipment?docNumber=&docPrefix=&soType=SO';
-          }
+              if (!rastreio || rastreio.includes('dhl.com')) {
+                if (transportadora === 'GOL') rastreio = 'https://servicos.gollog.com.br/app/site/tracking';
+                else if (transportadora === 'AZUL') rastreio = 'https://www.azullogistica.com.br/Rastreio';
+                else rastreio = 'https://www.latamcargo.com/pt/trackshipment?docNumber=&docPrefix=&soType=SO';
+              }
 
-          return {
-            ...item,
-            id: String(id),
-            Rastreio: rastreio,
-            Transportadora: transportadora
-          };
-        });
-        setAwbList(normalized);
-      } else {
-        setAwbList([]);
-      }
+              return {
+                ...item,
+                id: String(id),
+                Rastreio: rastreio,
+                Transportadora: transportadora
+              };
+            });
+            setAwbList(normalized);
+          } else {
+            setAwbList([]);
+          }
+          setLoadingAwb(false);
+        },
+        20000
+      );
     } catch (error) {
       console.error('Erro ao buscar dados de AWB:', error);
-    } finally {
       setLoadingAwb(false);
     }
   };
@@ -1196,20 +1214,28 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
   }, []);
 
   const fetchData = async () => {
+    if (orders.length === 0) {
+      setLoading(true);
+    }
     try {
-      // Usa cache de 20s compartilhado com o Painel
-      const data = await dataCache.get('painelData', () => api.post('getPainelData'), 20000);
-      const normalized = (data || []).map((order: any, idx: number) => {
-        const id = order.id || order.ID || order['Ordem'] || order['ORDEM'] || (order._rowIndex ? `row-${order._rowIndex}` : `idx-${idx}`);
-        return {
-          ...order,
-          id: String(id)
-        };
-      });
-      setOrders(normalized);
+      await dataCache.swr(
+        'painelData',
+        () => api.post('getPainelData'),
+        (data) => {
+          const normalized = (data || []).map((order: any, idx: number) => {
+            const id = order.id || order.ID || order['Ordem'] || order['ORDEM'] || (order._rowIndex ? `row-${order._rowIndex}` : `idx-${idx}`);
+            return {
+              ...order,
+              id: String(id)
+            };
+          });
+          setOrders(normalized);
+          setLoading(false);
+        },
+        20000
+      );
     } catch (error) {
       console.error('Erro ao buscar dados do painel:', error);
-    } finally {
       setLoading(false);
     }
   };
