@@ -170,6 +170,11 @@ async function startServer() {
     res.json(result);
   });
 
+  app.post("/api/awb/send-email", async (req, res) => {
+    const result = await forwardToAppsScript("sendAwbEmail", req.body);
+    res.json(result);
+  });
+
   app.post("/api/awb/delete", async (req, res) => {
     const result = await forwardToAppsScript("deleteAwbData", req.body);
     res.json(result);

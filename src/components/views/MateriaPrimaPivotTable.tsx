@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   ChevronRight, 
   ChevronDown, 
@@ -95,6 +95,21 @@ export default function MateriaPrimaPivotTable({ data, onRefresh, isLoading, onU
   
   // Estado dos Filtros e Visualização
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedUnits, setSelectedUnits] = useState<string[]>([]);
+  const [isUnitDropdownOpen, setIsUnitDropdownOpen] = useState(false);
+  const unitDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (unitDropdownRef.current && !unitDropdownRef.current.contains(event.target as Node)) {
+        setIsUnitDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
   const [showConfigPanel, setShowConfigPanel] = useState(true);
   const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
   const [showTotalsOnRows, setShowTotalsOnRows] = useState(true);
@@ -147,16 +162,79 @@ export default function MateriaPrimaPivotTable({ data, onRefresh, isLoading, onU
     return String(row[key] || '-');
   };
 
+  // Obter todas as unidades distintas para o seletor de filtros
+  const availableUnits = useMemo(() => {
+    const units = new Set<string>();
+    data.forEach(row => {
+      const u = getRowValue(row, 'Und.').trim();
+      if (u) {
+        units.add(u);
+      }
+    });
+    return Array.from(units).sort();
+  }, [data]);
+
+  // Helper variables for multi-select unit filter
+  const isAllSelected = useMemo(() => {
+    return selectedUnits.length === 0 || selectedUnits.length === availableUnits.length;
+  }, [selectedUnits, availableUnits]);
+
+  const isUnitSelected = (unit: string) => {
+    if (selectedUnits.length === 0) return true; // Treat empty selection as "Todas" checked
+    return selectedUnits.includes(unit);
+  };
+
+  const toggleUnit = (unit: string) => {
+    if (selectedUnits.length === 0) {
+      // If currently all are selected, unchecking one means selecting everything else
+      setSelectedUnits(availableUnits.filter(u => u !== unit));
+    } else {
+      setSelectedUnits(prev => {
+        if (prev.includes(unit)) {
+          const next = prev.filter(u => u !== unit);
+          return next.length === 0 ? [] : next;
+        } else {
+          const next = [...prev, unit];
+          return next.length === availableUnits.length ? [] : next;
+        }
+      });
+    }
+  };
+
+  const toggleAllUnits = () => {
+    setSelectedUnits([]); // Reset to empty, which means select all
+  };
+
+  const unitButtonLabel = useMemo(() => {
+    if (selectedUnits.length === 0 || selectedUnits.length === availableUnits.length) {
+      return 'Todas';
+    }
+    if (selectedUnits.length === 1) {
+      return selectedUnits[0];
+    }
+    return `${selectedUnits.length} Selecionadas`;
+  }, [selectedUnits, availableUnits]);
+
   // Filtragem inicial dos dados originais baseado na busca global antes de pivotar
   const filteredData = useMemo(() => {
-    if (!searchQuery.trim()) return data;
+    let result = data;
+
+    // Filtrar por unidade (Und.) se houver unidades selecionadas especificamente
+    if (selectedUnits.length > 0) {
+      result = result.filter(row => {
+        const u = getRowValue(row, 'Und.').trim();
+        return selectedUnits.includes(u);
+      });
+    }
+
+    if (!searchQuery.trim()) return result;
     const query = searchQuery.toLowerCase();
-    return data.filter(row => {
+    return result.filter(row => {
       return Object.values(row).some(val => 
         String(val).toLowerCase().includes(query)
       );
     });
-  }, [data, searchQuery]);
+  }, [data, searchQuery, selectedUnits]);
 
   // Construção recursiva da árvore de agregação pivotada
   const pivotTree = useMemo(() => {
@@ -591,6 +669,61 @@ export default function MateriaPrimaPivotTable({ data, onRefresh, isLoading, onU
           </div>
 
           <div className="flex items-center gap-2 w-full md:w-auto">
+            {/* Filtro de Unidade (Und.) */}
+            <div className="relative shrink-0" ref={unitDropdownRef}>
+              <button
+                type="button"
+                onClick={() => setIsUnitDropdownOpen(!isUnitDropdownOpen)}
+                className="bg-white border border-gray-300 rounded-lg flex items-center justify-between px-3 py-1.5 shadow-sm text-xs text-gray-800 font-black cursor-pointer hover:bg-gray-50 focus:outline-none transition-all h-[34px] min-w-[120px]"
+              >
+                <div className="flex items-center">
+                  <span className="text-gray-400 font-extrabold uppercase tracking-wider text-[9px] mr-1.5">Und:</span>
+                  <span className="truncate max-w-[80px]">{unitButtonLabel}</span>
+                </div>
+                <ChevronDown size={13} className={`text-gray-500 ml-1.5 transition-transform duration-200 ${isUnitDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {isUnitDropdownOpen && (
+                <div className="absolute right-0 md:left-0 mt-1 w-48 bg-white border border-gray-200 rounded-xl shadow-lg z-50 py-1.5 overflow-hidden max-h-64 overflow-y-auto">
+                  {/* Option: Todas */}
+                  <div
+                    onClick={toggleAllUnits}
+                    className="px-3 py-2 hover:bg-gray-50 flex items-center gap-2.5 cursor-pointer transition-colors text-xs text-slate-700 font-bold border-b border-gray-100"
+                  >
+                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0 ${
+                      isAllSelected 
+                        ? 'bg-blue-600 border-blue-600 text-white' 
+                        : 'bg-white border-gray-300'
+                    }`}>
+                      {isAllSelected && <Check size={10} strokeWidth={4} />}
+                    </div>
+                    <span>Todas</span>
+                  </div>
+
+                  {/* Individual Options */}
+                  {availableUnits.map(unit => {
+                    const selected = isUnitSelected(unit);
+                    return (
+                      <div
+                        key={unit}
+                        onClick={() => toggleUnit(unit)}
+                        className="px-3 py-1.5 hover:bg-gray-50 flex items-center gap-2.5 cursor-pointer transition-colors text-xs text-slate-600 font-semibold"
+                      >
+                        <div className={`w-4 h-4 rounded border flex items-center justify-center transition-all shrink-0 ${
+                          selected 
+                            ? 'bg-blue-600 border-blue-600 text-white' 
+                            : 'bg-white border-gray-300'
+                        }`}>
+                          {selected && <Check size={10} strokeWidth={4} />}
+                        </div>
+                        <span>{unit}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
             <div className="flex-1 md:flex-initial bg-white border border-gray-300 rounded-lg flex items-center px-2.5 py-1.5 max-w-xs shadow-sm">
               <Search size={15} className="text-gray-400 shrink-0" />
               <input

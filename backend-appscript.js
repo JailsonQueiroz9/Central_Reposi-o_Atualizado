@@ -89,6 +89,10 @@ function doPost(e) {
       case 'saveAwbData':
         result = saveAwbData(data);
         break;
+      case 'sendAwbEmail':
+        enviarEmailPersonalizado(data.awb, data.to, data.cc, data.bcc, data.body, 'Follow-Up AWB');
+        result = { success: true, message: "E-mail enviado com sucesso!" };
+        break;
       case 'deleteAwbData':
         result = deleteAwbData(data);
         break;
@@ -1310,36 +1314,105 @@ function enviarEmailPersonalizado(awb, to, cc, bcc, customBody, sourceSheet) {
   var isPre = sourceSheet === 'PRÉ' || sourceSheet === 'PRÉ' || sourceSheet === 'PRE' || sourceSheet === 'PRÉ (novos)';
   var labelId = isPre ? "NF's" : "AWB NUMBER";
   var valueId = isPre 
-    ? (awb["NF's"] || awb.nfs || "N/A") 
-    : (awb.AWB || awb.awbNumber || "N/A");
+    ? (awb["NF's"] || awb.nfs || awb.NFs || "N/A") 
+    : (awb.AWB || awb.awbNumber || awb.Awb || awb.awb || "N/A");
 
-  var subject = "Relatório de Embarque - " + labelId + ": " + valueId;
-  var bodyText = customBody || awb.Observação || awb.observacao || "Sem observações adicionais.";
-  var trackingLink = "https://aereodasspcpfollow.netlify.app/";
+  var brandName = awb.Marca || awb.marca || "N/A";
+  var carrierName = awb.Transportadora || awb.transportadora || "LATAM CARGO";
+  var materialDesc = awb.Material || awb.material || "Insumos/Matéria-Prima";
+  var linkedNFs = awb.NFs || awb.nfs || "N/A";
+
+  var subject = "Novo Embarque AWB - " + labelId + ": " + valueId + " (" + brandName + ")";
+  var bodyText = customBody || awb.Observação || awb.observacao || awb.Observacao || "Sem observações adicionais.";
+  
+  // Link de rastreamento dinâmico e correto com base na transportadora / registro
+  var trackingLink = awb.Rastreio || awb.rastreio || "https://aereodasspcpfollow.netlify.app/";
+
+  // Cor do status dinâmica
+  var statusText = awb.Status || awb.status || "EM TRÂNSITO";
+  var statusColor = "#3b82f6"; // Azul para trânsito
+  var statusBg = "#eff6ff";
+  
+  var statusUpper = String(statusText).toUpperCase().trim();
+  if (statusUpper.indexOf("DISPONIVEL") !== -1 || statusUpper.indexOf("DISPONÍVEL") !== -1) {
+    statusColor = "#10b981"; // Verde
+    statusBg = "#ecfdf5";
+  } else if (statusUpper.indexOf("CRITICO") !== -1 || statusUpper.indexOf("CRÍTICO") !== -1) {
+    statusColor = "#ef4444"; // Vermelho
+    statusBg = "#fef2f2";
+  } else if (statusUpper.indexOf("AGUARDANDO") !== -1) {
+    statusColor = "#f59e0b"; // Laranja
+    statusBg = "#fffbeb";
+  }
 
   var htmlBody = `
-    <div style="font-family: sans-serif; color: #1e293b; max-width: 600px; border: 1px solid #e2e8f0; border-radius: 20px; overflow: hidden;">
-      <div style="background-color: #2563eb; padding: 32px; color: white;">
-        <h2 style="margin: 0; font-size: 22px;">Relatório de Embarque</h2>
-        <p style="margin: 6px 0 0 0; font-size: 11px; opacity: 0.8; font-weight: bold; text-transform: uppercase;">Portal Logística PCP 2.1</p>
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1e293b; max-width: 620px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);">
+      
+      <!-- Header Corporativo -->
+      <div style="background-color: #0f172a; padding: 36px 32px; color: white; border-bottom: 4px solid #f97316;">
+        <span style="font-size: 10px; font-weight: 800; letter-spacing: 0.15em; text-transform: uppercase; color: #f97316; display: block; margin-bottom: 6px;">Notificação Automática</span>
+        <h2 style="margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.02em;">Novo Embarque AWB</h2>
+        <p style="margin: 6px 0 0 0; font-size: 12px; opacity: 0.75;">Portal de Logística & PCP - Grupo Dass</p>
       </div>
+      
       <div style="padding: 32px; background-color: #ffffff;">
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
-          <tr><td style="padding: 12px 0; border-bottom: 1px solid #f1f5f9; font-size: 11px; font-weight: 800; color: #64748b;">${labelId}</td>
-              <td style="padding: 12px 0; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 800; color: #2563eb; font-size: 16px;">${valueId}</td></tr>
-          <tr><td style="padding: 12px 0; border-bottom: 1px solid #f1f5f9; font-size: 11px; font-weight: 800; color: #64748b;">FORNECEDOR</td>
-              <td style="padding: 12px 0; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 600;">${awb.Fornecedor || awb.fornecedor || "N/A"}</td></tr>
-          <tr><td style="padding: 12px 0; border-bottom: 1px solid #f1f5f9; font-size: 11px; font-weight: 800; color: #64748b;">STATUS</td>
-              <td style="padding: 12px 0; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 800; color: #10b981;">${awb.Status || awb.status || "Pendente"}</td></tr>
+        
+        <!-- Grid de Informações Detalhadas -->
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 28px;">
+          <tr>
+            <td style="padding: 14px 0; border-bottom: 1px solid #f1f5f9; font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">${labelId}</td>
+            <td style="padding: 14px 0; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 800; color: #0f172a; font-size: 15px; font-family: monospace;">${valueId}</td>
+          </tr>
+          <tr>
+            <td style="padding: 14px 0; border-bottom: 1px solid #f1f5f9; font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Marca</td>
+            <td style="padding: 14px 0; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 700; color: #0f172a; font-size: 13px;">${brandName}</td>
+          </tr>
+          <tr>
+            <td style="padding: 14px 0; border-bottom: 1px solid #f1f5f9; font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Fornecedor</td>
+            <td style="padding: 14px 0; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 600; color: #334155; font-size: 13px;">${awb.Fornecedor || awb.fornecedor || "N/A"}</td>
+          </tr>
+          <tr>
+            <td style="padding: 14px 0; border-bottom: 1px solid #f1f5f9; font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Transportadora</td>
+            <td style="padding: 14px 0; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 600; color: #334155; font-size: 13px;">${carrierName}</td>
+          </tr>
+          <tr>
+            <td style="padding: 14px 0; border-bottom: 1px solid #f1f5f9; font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Notas Fiscais (NFs)</td>
+            <td style="padding: 14px 0; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 600; color: #334155; font-size: 13px; font-family: monospace;">${linkedNFs}</td>
+          </tr>
+          <tr>
+            <td style="padding: 14px 0; border-bottom: 1px solid #f1f5f9; font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Material Principal</td>
+            <td style="padding: 14px 0; border-bottom: 1px solid #f1f5f9; text-align: right; font-weight: 600; color: #334155; font-size: 13px;">${materialDesc}</td>
+          </tr>
+          <tr>
+            <td style="padding: 14px 0; border-bottom: 1px solid #f1f5f9; font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Status Atual</td>
+            <td style="padding: 14px 0; border-bottom: 1px solid #f1f5f9; text-align: right;">
+              <span style="display: inline-block; background-color: ${statusBg}; color: ${statusColor}; padding: 6px 14px; border-radius: 99px; font-weight: 800; font-size: 11px; border: 1px solid ${statusColor}40; letter-spacing: 0.02em;">
+                ${statusText}
+              </span>
+            </td>
+          </tr>
         </table>
-        <div style="background-color: #f8fafc; padding: 24px; border-radius: 16px; border: 1px solid #e2e8f0;">
-          <h4 style="margin: 0 0 12px 0; font-size: 11px; color: #64748b; text-transform: uppercase;">Mensagem do Follow-UP</h4>
-          <p style="margin: 0; font-size: 14px; line-height: 1.6; color: #334155; white-space: pre-wrap;">${bodyText}</p>
+        
+        <!-- Observações / Instruções Especiais -->
+        <div style="background-color: #f8fafc; padding: 24px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 28px;">
+          <h4 style="margin: 0 0 8px 0; font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;">Observações do Follow-UP</h4>
+          <p style="margin: 0; font-size: 13px; line-height: 1.6; color: #334155; white-space: pre-wrap;">${bodyText}</p>
         </div>
-        <div style="margin-top: 24px; text-align: center;">
-          <a href="${trackingLink}" style="display: inline-block; background-color: #2563eb; color: white; padding: 14px 28px; border-radius: 12px; text-decoration: none; font-weight: 800; font-size: 12px;">ACOMPANHAR RASTREIO</a>
+        
+        <!-- Ação Principal -->
+        <div style="text-align: center; margin-top: 12px;">
+          <a href="${trackingLink}" target="_blank" style="display: inline-block; background-color: #2563eb; color: #ffffff; padding: 14px 28px; border-radius: 10px; text-decoration: none; font-weight: 800; font-size: 13px; letter-spacing: 0.02em; box-shadow: 0 4px 10px rgba(37, 99, 235, 0.2); transition: background-color 0.2s;">
+            RASTREAR NA TRANSPORTADORA
+          </a>
         </div>
+        
       </div>
+      
+      <!-- Rodapé -->
+      <div style="background-color: #f8fafc; padding: 24px 32px; text-align: center; border-t: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8;">
+        Este é um e-mail automático enviado pelo Portal de Logística e Planejamento e Controle de Produção (PCP) do Grupo Dass. Por favor, não responda diretamente a este remetente.
+      </div>
+      
     </div>
   `;
 

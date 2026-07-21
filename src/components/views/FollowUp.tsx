@@ -11,6 +11,7 @@ import {
   Copy, 
   FileDown, 
   ChevronRight, 
+  ChevronDown,
   Inbox, 
   ExternalLink,
   Layers,
@@ -24,7 +25,8 @@ import {
   UploadCloud,
   FileText,
   Eye,
-  Printer
+  Printer,
+  Mail
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { api } from '@/lib/api';
@@ -773,7 +775,11 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
     Transportadora: 'LATAM',
     FileBinaries: {} as Record<string, string>,
     FileBinariesInfo: {} as Record<string, any>,
-    DriveUrls: {} as Record<string, string>
+    DriveUrls: {} as Record<string, string>,
+    sendEmail: false,
+    emailTo: '',
+    emailCc: '',
+    emailBody: ''
   });
 
   const fetchAwbData = async () => {
@@ -840,6 +846,10 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
       id: editingAwb ? editingAwb.id : undefined,
       Docs: awbForm.DocList.length || 1,
       FileBinaries: {}, // Não envia binários gigantes para a planilha (evita erros de limite de célula de 50.000 caracteres)
+      send_email: awbForm.sendEmail,
+      email_to: awbForm.emailTo,
+      email_cc: awbForm.emailCc,
+      email_body: awbForm.emailBody
     };
 
     try {
@@ -874,6 +884,15 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
 
   const openNewAwbModal = () => {
     setEditingAwb(null);
+    let defaultEmail = '';
+    try {
+      const stored = localStorage.getItem('pcp_user');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        defaultEmail = parsed.email || '';
+      }
+    } catch (e) {}
+
     setAwbForm({
       Marca: 'UMBRO',
       Fornecedor: '',
@@ -888,7 +907,11 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
       Transportadora: 'LATAM',
       FileBinaries: {},
       FileBinariesInfo: {},
-      DriveUrls: {}
+      DriveUrls: {},
+      sendEmail: false,
+      emailTo: defaultEmail,
+      emailCc: '',
+      emailBody: ''
     });
     setIsAwbModalOpen(true);
   };
@@ -928,7 +951,11 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
       Transportadora: defaultTransportadora,
       FileBinaries: item.FileBinaries || {},
       FileBinariesInfo: item.FileBinariesInfo || {},
-      DriveUrls: item.DriveUrls || {}
+      DriveUrls: item.DriveUrls || {},
+      sendEmail: false,
+      emailTo: item.email_to || item.emailTo || '',
+      emailCc: item.email_cc || item.emailCc || '',
+      emailBody: item.email_body || item.emailBody || ''
     });
     setIsAwbModalOpen(true);
   };
@@ -2377,263 +2404,394 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
       {/* Modal de Cadastro/Edição de Embarque AWB */}
       <AnimatePresence>
         {isAwbModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-xs">
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white rounded-xl shadow-xl border border-gray-200 max-w-lg w-full overflow-hidden"
+              initial={{ opacity: 0, y: 15, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.98 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              className="bg-white rounded-2xl shadow-2xl border border-slate-200/80 max-w-4xl w-full overflow-hidden flex flex-col max-h-[90vh]"
             >
-              <div className="bg-slate-900 px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                  <Plane className="text-blue-500" />
-                  {editingAwb ? 'Editar Embarque AWB' : 'Novo Embarque AWB'}
-                </h3>
+              {/* Header do Modal */}
+              <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-950 px-6 py-4.5 border-b border-slate-800 flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
+                    <Plane className="text-blue-400" size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-white tracking-tight">
+                      {editingAwb ? 'Editar Embarque AWB' : 'Novo Embarque AWB'}
+                    </h3>
+                    <p className="text-[10px] text-slate-400 font-medium">Controle e envio de alertas de transporte aéreo</p>
+                  </div>
+                </div>
                 <button
+                  type="button"
                   onClick={() => setIsAwbModalOpen(false)}
-                  className="text-slate-400 hover:text-white transition-colors cursor-pointer"
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
                 >
                   <X size={18} />
                 </button>
               </div>
 
-              <form onSubmit={handleSaveAwb} className="p-6 space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Marca</label>
-                    <select
-                      value={awbForm.Marca}
-                      onChange={(e) => setAwbForm({ ...awbForm, Marca: e.target.value })}
-                      className="w-full bg-white text-slate-900 border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer font-semibold"
-                    >
-                      <option value="UMBRO">UMBRO</option>
-                      <option value="ASICS">ASICS</option>
-                      <option value="FILA">FILA</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Fornecedor</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Ex: DHL Importadora"
-                      value={awbForm.Fornecedor}
-                      onChange={(e) => setAwbForm({ ...awbForm, Fornecedor: e.target.value })}
-                      className="w-full bg-white text-slate-900 border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 font-medium placeholder-slate-400"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Data de Saída</label>
-                    <input
-                      type="date"
-                      required
-                      value={awbForm.Saida}
-                      onChange={(e) => setAwbForm({ ...awbForm, Saida: e.target.value })}
-                      className="w-full bg-white text-slate-900 border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 font-medium"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Status</label>
-                    <select
-                      value={awbForm.Status}
-                      onChange={(e) => setAwbForm({ ...awbForm, Status: e.target.value })}
-                      className="w-full bg-white text-slate-900 border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer font-semibold"
-                    >
-                      <option value="EM TRÂNSITO">EM TRÂNSITO</option>
-                      <option value="DISPONIVEL">DISPONÍVEL</option>
-                      <option value="AGUARDANDO">AGUARDANDO</option>
-                      <option value="CRÍTICO">CRÍTICO</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Transportadora</label>
-                    <select
-                      value={awbForm.Transportadora || 'LATAM'}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        let trackingUrl = 'https://www.latamcargo.com/pt/trackshipment?docNumber=&docPrefix=&soType=SO';
-                        if (val === 'GOL') {
-                          trackingUrl = 'https://servicos.gollog.com.br/app/site/tracking';
-                        } else if (val === 'AZUL') {
-                          trackingUrl = 'https://www.azullogistica.com.br/Rastreio';
-                        }
-                        setAwbForm({ 
-                          ...awbForm, 
-                          Transportadora: val,
-                          Rastreio: trackingUrl 
-                        });
-                      }}
-                      className="w-full bg-white text-slate-900 border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer font-semibold"
-                    >
-                      <option value="LATAM">LATAM CARGO</option>
-                      <option value="GOL">GOLLOG (GOL)</option>
-                      <option value="AZUL">AZUL LOGÍSTICA</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">AWB / Air Waybill</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Ex: AWB892-90184"
-                      value={awbForm.Awb}
-                      onChange={(e) => setAwbForm({ ...awbForm, Awb: e.target.value })}
-                      className="w-full bg-white text-slate-900 border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 font-mono font-bold placeholder-slate-400"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">NFs Vinculadas</label>
-                    <input
-                      type="text"
-                      placeholder="Ex: 89745, 89746"
-                      value={awbForm.NFs}
-                      onChange={(e) => setAwbForm({ ...awbForm, NFs: e.target.value })}
-                      className="w-full bg-white text-slate-900 border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 font-medium placeholder-slate-400"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Descrição do Material</label>
-                    <input
-                      type="text"
-                      placeholder="Ex: Palmilhas termomoldadas e solados Asics"
-                      value={awbForm.Material}
-                      onChange={(e) => setAwbForm({ ...awbForm, Material: e.target.value })}
-                      className="w-full bg-white text-slate-900 border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 font-medium placeholder-slate-400"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Observações</label>
-                  <textarea
-                    placeholder="Informações adicionais..."
-                    value={awbForm.Observacao}
-                    onChange={(e) => setAwbForm({ ...awbForm, Observacao: e.target.value })}
-                    rows={2}
-                    className="w-full bg-white text-slate-900 border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 font-medium placeholder-slate-400"
-                  />
-                </div>
-
-                {/* Upload de PDFs */}
-                <div className="space-y-2">
-                  <label className="block text-xs font-bold text-slate-500 uppercase">Documentos & Anexos (PDF)</label>
+              {/* Corpo do Formulário */}
+              <form onSubmit={handleSaveAwb} className="flex flex-col overflow-hidden">
+                <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6 custom-scrollbar">
                   
-                  {/* Lista de Arquivos já anexados no formulário */}
-                  {awbForm.DocList && awbForm.DocList.length > 0 && (
-                    <div className="space-y-1.5 max-h-[120px] overflow-y-auto custom-scrollbar mb-2">
-                      {awbForm.DocList.map((docName, idx) => {
-                        const hasDriveUrl = awbForm.DriveUrls && awbForm.DriveUrls[docName];
-                        return (
-                          <div key={idx} className="flex justify-between items-center bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs">
-                            <div className="flex items-center gap-1.5 overflow-hidden mr-2">
-                              <FileText size={14} className="text-blue-600 shrink-0" />
-                              <span className="font-medium text-slate-800 truncate" title={docName}>{docName}</span>
+                  {/* Seção 1: Identificação */}
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 pb-1 border-b border-slate-100">
+                      <span className="text-[10px] font-black tracking-widest text-slate-400 uppercase">1. Dados Gerais do Embarque</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <div>
+                        <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Marca</label>
+                        <div className="relative">
+                          <select
+                            value={awbForm.Marca}
+                            onChange={(e) => setAwbForm({ ...awbForm, Marca: e.target.value })}
+                            className="w-full bg-slate-50 text-slate-800 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100 transition-all cursor-pointer font-bold appearance-none"
+                          >
+                            <option value="UMBRO" style={{ color: '#0f172a', backgroundColor: '#ffffff' }} className="text-slate-900 bg-white font-semibold">UMBRO</option>
+                            <option value="ASICS" style={{ color: '#0f172a', backgroundColor: '#ffffff' }} className="text-slate-900 bg-white font-semibold">ASICS</option>
+                            <option value="FILA" style={{ color: '#0f172a', backgroundColor: '#ffffff' }} className="text-slate-900 bg-white font-semibold">FILA</option>
+                          </select>
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                            <ChevronDown size={14} />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Fornecedor</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Ex: DHL Importadora"
+                          value={awbForm.Fornecedor}
+                          onChange={(e) => setAwbForm({ ...awbForm, Fornecedor: e.target.value })}
+                          className="w-full bg-slate-50 text-slate-800 border border-slate-200 rounded-xl px-3.5 py-2 text-xs outline-none hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100 transition-all font-semibold placeholder-slate-400"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Data de Saída</label>
+                        <input
+                          type="date"
+                          required
+                          value={awbForm.Saida}
+                          onChange={(e) => setAwbForm({ ...awbForm, Saida: e.target.value })}
+                          className="w-full bg-slate-50 text-slate-800 border border-slate-200 rounded-xl px-3.5 py-2 text-xs outline-none hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100 transition-all font-semibold"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Status</label>
+                        <div className="relative">
+                          <select
+                            value={awbForm.Status}
+                            onChange={(e) => setAwbForm({ ...awbForm, Status: e.target.value })}
+                            className="w-full bg-slate-50 text-slate-800 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100 transition-all cursor-pointer font-bold appearance-none"
+                          >
+                            <option value="EM TRÂNSITO" style={{ color: '#0f172a', backgroundColor: '#ffffff' }} className="text-slate-900 bg-white font-semibold">EM TRÂNSITO ✈️</option>
+                            <option value="DISPONIVEL" style={{ color: '#0f172a', backgroundColor: '#ffffff' }} className="text-slate-900 bg-white font-semibold">DISPONÍVEL ✅</option>
+                            <option value="AGUARDANDO" style={{ color: '#0f172a', backgroundColor: '#ffffff' }} className="text-slate-900 bg-white font-semibold">AGUARDANDO ⏳</option>
+                            <option value="CRÍTICO" style={{ color: '#0f172a', backgroundColor: '#ffffff' }} className="text-slate-900 bg-white font-semibold">CRÍTICO 🚨</option>
+                          </select>
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                            <ChevronDown size={14} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Seção 2: Transporte */}
+                  <div className="space-y-4 pt-1">
+                    <div className="flex items-center gap-2 pb-1 border-b border-slate-100">
+                      <span className="text-[10px] font-black tracking-widest text-slate-400 uppercase">2. Logística & Identificação</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <div>
+                        <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Transportadora</label>
+                        <div className="relative">
+                          <select
+                            value={awbForm.Transportadora || 'LATAM'}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              let trackingUrl = 'https://www.latamcargo.com/pt/trackshipment?docNumber=&docPrefix=&soType=SO';
+                              if (val === 'GOL') {
+                                trackingUrl = 'https://servicos.gollog.com.br/app/site/tracking';
+                              } else if (val === 'AZUL') {
+                                trackingUrl = 'https://www.azullogistica.com.br/Rastreio';
+                              }
+                              setAwbForm({ 
+                                ...awbForm, 
+                                Transportadora: val,
+                                Rastreio: trackingUrl 
+                              });
+                            }}
+                            className="w-full bg-slate-50 text-slate-800 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100 transition-all cursor-pointer font-bold appearance-none"
+                          >
+                            <option value="LATAM" style={{ color: '#0f172a', backgroundColor: '#ffffff' }} className="text-slate-900 bg-white font-semibold">LATAM CARGO</option>
+                            <option value="GOL" style={{ color: '#0f172a', backgroundColor: '#ffffff' }} className="text-slate-900 bg-white font-semibold">GOLLOG (GOL)</option>
+                            <option value="AZUL" style={{ color: '#0f172a', backgroundColor: '#ffffff' }} className="text-slate-900 bg-white font-semibold">AZUL LOGÍSTICA</option>
+                          </select>
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                            <ChevronDown size={14} />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">AWB / Air Waybill</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Ex: AWB892-90184"
+                          value={awbForm.Awb}
+                          onChange={(e) => setAwbForm({ ...awbForm, Awb: e.target.value })}
+                          className="w-full bg-slate-50 text-slate-900 border border-slate-200 rounded-xl px-3.5 py-2 text-xs outline-none hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100 transition-all font-mono font-black tracking-wider placeholder-slate-400 uppercase"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">NFs Vinculadas</label>
+                        <input
+                          type="text"
+                          placeholder="Ex: 89745, 89746"
+                          value={awbForm.NFs}
+                          onChange={(e) => setAwbForm({ ...awbForm, NFs: e.target.value })}
+                          className="w-full bg-slate-50 text-slate-800 border border-slate-200 rounded-xl px-3.5 py-2 text-xs outline-none hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100 transition-all font-semibold placeholder-slate-400"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Descrição do Material</label>
+                        <input
+                          type="text"
+                          placeholder="Ex: Palmilhas e solados Asics"
+                          value={awbForm.Material}
+                          onChange={(e) => setAwbForm({ ...awbForm, Material: e.target.value })}
+                          className="w-full bg-slate-50 text-slate-800 border border-slate-200 rounded-xl px-3.5 py-2 text-xs outline-none hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100 transition-all font-semibold placeholder-slate-400"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Observações Internas</label>
+                      <textarea
+                        placeholder="Insira detalhes adicionais sobre o andamento do embarque..."
+                        value={awbForm.Observacao}
+                        onChange={(e) => setAwbForm({ ...awbForm, Observacao: e.target.value })}
+                        rows={2}
+                        className="w-full bg-slate-50 text-slate-800 border border-slate-200 rounded-xl px-3.5 py-2 text-xs outline-none hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100 transition-all font-semibold placeholder-slate-400 resize-none"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Seção 3: Notificação por E-mail */}
+                  <div className="space-y-4 pt-1">
+                    <div className="flex items-center gap-2 pb-1 border-b border-slate-100">
+                      <span className="text-[10px] font-black tracking-widest text-slate-400 uppercase">3. Notificação & E-mail de Alerta</span>
+                    </div>
+
+                    <div className={`border rounded-2xl p-4.5 transition-all duration-300 ${
+                      awbForm.sendEmail 
+                        ? 'bg-blue-50/20 border-blue-200 shadow-sm' 
+                        : 'bg-slate-50/50 border-slate-200/80 hover:bg-slate-50'
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-9 h-9 rounded-xl flex items-center justify-center transition-colors ${
+                            awbForm.sendEmail ? 'bg-blue-600 text-white' : 'bg-slate-200/80 text-slate-500'
+                          }`}>
+                            <Mail size={16} />
+                          </div>
+                          <div>
+                            <span className="text-xs font-bold text-slate-800 block">Notificação por E-mail</span>
+                            <span className="text-[10px] text-slate-500 font-medium">Disparar alerta automático de novo embarque</span>
+                          </div>
+                        </div>
+                        <label className="relative inline-flex items-center cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={awbForm.sendEmail}
+                            onChange={(e) => setAwbForm({ ...awbForm, sendEmail: e.target.checked })}
+                            className="sr-only peer"
+                          />
+                          <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[3px] after:left-[3px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-blue-600"></div>
+                        </label>
+                      </div>
+
+                      {awbForm.sendEmail && (
+                        <motion.div 
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          className="space-y-4 pt-4 mt-4 border-t border-blue-100/60 overflow-hidden"
+                        >
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Destinatário (Para)</label>
+                              <input
+                                type="email"
+                                required={awbForm.sendEmail}
+                                placeholder="logistica@grupodass.com.br"
+                                value={awbForm.emailTo}
+                                onChange={(e) => setAwbForm({ ...awbForm, emailTo: e.target.value })}
+                                className="w-full bg-white text-slate-900 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none hover:border-slate-300 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all font-semibold placeholder-slate-400"
+                              />
                             </div>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              {hasDriveUrl && (
-                                <a
-                                  href={awbForm.DriveUrls[docName]}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-indigo-600 hover:text-indigo-800 p-1 rounded hover:bg-indigo-50 transition-colors flex items-center gap-0.5"
-                                  title="Ver no Google Drive"
-                                >
-                                  <ExternalLink size={12} />
-                                </a>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setAwbForm(prev => {
-                                    const updatedDriveUrls = { ...(prev.DriveUrls || {}) };
-                                    delete updatedDriveUrls[docName];
-                                    return {
-                                      ...prev,
-                                      DocList: prev.DocList.filter((_, i) => i !== idx),
-                                      DriveUrls: updatedDriveUrls
-                                    };
-                                  });
-                                }}
-                                className="text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50 transition-colors cursor-pointer shrink-0"
-                                title="Remover anexo"
-                              >
-                                <Trash2 size={13} />
-                              </button>
+                            <div>
+                              <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Cópia (Cc)</label>
+                              <input
+                                type="text"
+                                placeholder="exemplo@grupodass.com.br, pcp@grupodass.com.br"
+                                value={awbForm.emailCc}
+                                onChange={(e) => setAwbForm({ ...awbForm, emailCc: e.target.value })}
+                                className="w-full bg-white text-slate-900 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none hover:border-slate-300 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all font-semibold placeholder-slate-400"
+                              />
                             </div>
                           </div>
-                        );
-                      })}
+                          <div>
+                            <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Observação customizada para o corpo do E-mail</label>
+                            <textarea
+                              placeholder="Digite aqui alguma instrução especial para incluir no e-mail de aviso..."
+                              value={awbForm.emailBody}
+                              onChange={(e) => setAwbForm({ ...awbForm, emailBody: e.target.value })}
+                              rows={2.5}
+                              className="w-full bg-white text-slate-900 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none hover:border-slate-300 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all font-semibold placeholder-slate-400 resize-none"
+                            />
+                          </div>
+                        </motion.div>
+                      )}
                     </div>
-                  )}
-
-                  {/* Drag and Drop Zone */}
-                  <div
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      setIsDraggingPdf(true);
-                    }}
-                    onDragLeave={() => setIsDraggingPdf(false)}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      setIsDraggingPdf(false);
-                      handlePdfUpload(e.dataTransfer.files, true);
-                    }}
-                    className={`border-2 border-dashed rounded-lg p-4 text-center transition-all ${
-                      isDraggingPdf 
-                        ? 'border-blue-500 bg-blue-50/50 scale-[0.98]' 
-                        : 'border-slate-300 bg-slate-50/50 hover:bg-slate-50 hover:border-slate-400'
-                    }`}
-                  >
-                    {isUploadingFile ? (
-                      <div className="flex flex-col items-center justify-center gap-2 py-4">
-                        <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                        <span className="text-xs font-bold text-blue-600">Enviando PDF para o Google Drive...</span>
-                        <span className="text-[10px] text-slate-400">Extraindo dados do documento</span>
-                      </div>
-                    ) : (
-                      <label className="cursor-pointer flex flex-col items-center justify-center gap-1">
-                        <UploadCloud className={`w-8 h-8 ${isDraggingPdf ? 'text-blue-500 animate-bounce' : 'text-slate-400'}`} />
-                        <span className="text-xs font-semibold text-slate-700">
-                          {isDraggingPdf ? 'Solte seus PDFs aqui!' : 'Arraste ou clique para enviar PDF'}
-                        </span>
-                        <span className="text-[10px] text-slate-400">Apenas arquivos .pdf</span>
-                        <input
-                          type="file"
-                          accept="application/pdf"
-                          multiple
-                          className="hidden"
-                          onChange={(e) => handlePdfUpload(e.target.files, true)}
-                        />
-                      </label>
-                    )}
                   </div>
+
+                  {/* Seção 4: Documentos & Anexos (PDF) */}
+                  <div className="space-y-4 pt-1">
+                    <div className="flex items-center gap-2 pb-1 border-b border-slate-100">
+                      <span className="text-[10px] font-black tracking-widest text-slate-400 uppercase">4. Documentos & Anexos</span>
+                    </div>
+
+                    <div className="space-y-3">
+                      {/* Lista de Arquivos já anexados */}
+                      {awbForm.DocList && awbForm.DocList.length > 0 && (
+                        <div className="space-y-1.5 max-h-[140px] overflow-y-auto custom-scrollbar">
+                          {awbForm.DocList.map((docName, idx) => {
+                            const hasDriveUrl = awbForm.DriveUrls && awbForm.DriveUrls[docName];
+                            return (
+                              <div key={idx} className="flex justify-between items-center bg-slate-50/60 border border-slate-200/80 rounded-xl p-2.5 text-xs transition-colors hover:bg-slate-50">
+                                <div className="flex items-center gap-2 overflow-hidden mr-3">
+                                  <div className="w-7 h-7 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-500 shrink-0">
+                                    <FileText size={14} />
+                                  </div>
+                                  <span className="font-semibold text-slate-700 truncate" title={docName}>{docName}</span>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  {hasDriveUrl && (
+                                    <a
+                                      href={awbForm.DriveUrls[docName]}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-indigo-600 hover:text-indigo-800 p-1.5 rounded-lg hover:bg-indigo-50 transition-colors flex items-center justify-center"
+                                      title="Ver no Google Drive"
+                                    >
+                                      <ExternalLink size={14} />
+                                    </a>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setAwbForm(prev => {
+                                        const updatedDriveUrls = { ...(prev.DriveUrls || {}) };
+                                        delete updatedDriveUrls[docName];
+                                        return {
+                                          ...prev,
+                                          DocList: prev.DocList.filter((_, i) => i !== idx),
+                                          DriveUrls: updatedDriveUrls
+                                        };
+                                      });
+                                    }}
+                                    className="text-red-500 hover:text-red-700 p-1.5 rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
+                                    title="Remover anexo"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {/* Drag and Drop Zone */}
+                      <div
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          setIsDraggingPdf(true);
+                        }}
+                        onDragLeave={() => setIsDraggingPdf(false)}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          setIsDraggingPdf(false);
+                          handlePdfUpload(e.dataTransfer.files, true);
+                        }}
+                        className={`border-2 border-dashed rounded-2xl p-5 text-center transition-all duration-300 ${
+                          isDraggingPdf 
+                            ? 'border-blue-500 bg-blue-50/40 scale-[0.99] shadow-inner' 
+                            : 'border-slate-300 bg-slate-50/40 hover:bg-slate-50/80 hover:border-slate-400/80'
+                        }`}
+                      >
+                        {isUploadingFile ? (
+                          <div className="flex flex-col items-center justify-center gap-2.5 py-3">
+                            <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                            <span className="text-xs font-bold text-blue-600">Processando e integrando PDF...</span>
+                            <span className="text-[10px] text-slate-400 font-medium">Extraindo metadados do documento</span>
+                          </div>
+                        ) : (
+                          <label className="cursor-pointer flex flex-col items-center justify-center gap-1.5 py-1">
+                            <div className="w-10 h-10 rounded-full bg-slate-200/60 flex items-center justify-center text-slate-500 mb-1 transition-transform group-hover:scale-105">
+                              <UploadCloud className={`w-5 h-5 ${isDraggingPdf ? 'text-blue-500 animate-bounce' : 'text-slate-500'}`} />
+                            </div>
+                            <span className="text-xs font-bold text-slate-700">
+                              {isDraggingPdf ? 'Solte para enviar os arquivos!' : 'Arraste ou clique para anexar documentos PDF'}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-medium">Apenas arquivos no formato .pdf</span>
+                            <input
+                              type="file"
+                              accept="application/pdf"
+                              multiple
+                              className="hidden"
+                              onChange={(e) => handlePdfUpload(e.target.files, true)}
+                            />
+                          </label>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
                 </div>
 
-                <div className="pt-4 border-t border-gray-100 flex justify-end gap-2 text-sm font-bold">
+                {/* Rodapé Fixado */}
+                <div className="px-6 py-4.5 bg-slate-50 border-t border-slate-100 flex justify-end gap-3 rounded-b-2xl shrink-0">
                   <button
                     type="button"
                     onClick={() => setIsAwbModalOpen(false)}
-                    className="px-4 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer font-bold"
+                    className="px-4.5 py-2 border border-slate-200 hover:border-slate-300 hover:bg-slate-100 text-slate-600 rounded-xl transition-all cursor-pointer text-xs font-extrabold tracking-wide uppercase"
                   >
                     Cancelar
                   </button>
-                   <button
+                  <button
                     type="submit"
                     disabled={isUploadingFile}
-                    className={`px-4 py-2 text-white rounded-lg transition-colors font-bold shadow-sm flex items-center gap-2 ${
-                      isUploadingFile ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 cursor-pointer'
+                    className={`px-6 py-2 text-white rounded-xl transition-all font-extrabold tracking-wide uppercase shadow-md hover:shadow-lg text-xs flex items-center gap-2 ${
+                      isUploadingFile ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700 hover:scale-[1.01] cursor-pointer active:scale-95'
                     }`}
                   >
-                    {isUploadingFile ? 'Enviando PDF...' : 'Salvar'}
+                    {isUploadingFile ? 'Processando...' : 'Salvar Embarque'}
                   </button>
                 </div>
               </form>
