@@ -36,7 +36,7 @@ export const api = {
     }
 
     // 2. FALLBACK DIRETO (caso o servidor Express local não esteja ativo ou retorne erro)
-    const url = import.meta.env.VITE_API_URL || import.meta.env.VITE_APPS_SCRIPT_URL || "https://script.google.com/macros/s/AKfycbxJZC7qRIkZ-roT9AV4TDRKgV0hiW684LwRTvTG1oh0BOnohlFXcs7QBcXmX9cci-p5/exec";
+    const url = import.meta.env.VITE_API_URL || import.meta.env.VITE_APPS_SCRIPT_URL || "https://script.google.com/macros/s/AKfycbxCvHfU0Nmx7e5inDRV-YQAaoKyQG2mye1SrzxO28-lopNrTOYPCTC4NpC7TlnZSbtI/exec";
     
     const isInvalidUrl = !url || url.includes('TODO') || url.includes('YOUR_') || url.trim() === '';
 

@@ -921,7 +921,7 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
       Material: '',
       Observacao: '',
       Rastreio: 'https://www.latamcargo.com/pt/trackshipment?docNumber=&docPrefix=&soType=SO',
-      DocList: ['Invoice_' + Math.floor(Math.random() * 1000000) + '.pdf', 'Packing_List.pdf'],
+      DocList: [],
       Transportadora: 'LATAM',
       FileBinaries: {},
       FileBinariesInfo: {},
@@ -965,7 +965,7 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
       Material: item.Material || '',
       Observacao: item.Observacao || '',
       Rastreio: resolvedRastreio,
-      DocList: Array.isArray(item.DocList) ? item.DocList : ['Invoice_Anexo.pdf'],
+      DocList: Array.isArray(item.DocList) ? item.DocList : [],
       Transportadora: defaultTransportadora,
       FileBinaries: item.FileBinaries || {},
       FileBinariesInfo: item.FileBinariesInfo || {},
@@ -3002,10 +3002,10 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
                 <div className="p-6 space-y-4 flex flex-col justify-between">
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <span className="text-xs font-bold text-slate-500 uppercase block">Anexos Vinculados ({Array.isArray(selectedDocsAwb.DocList) ? selectedDocsAwb.DocList.length : 1})</span>
+                      <span className="text-xs font-bold text-slate-500 uppercase block">Anexos Vinculados ({Array.isArray(selectedDocsAwb.DocList) ? selectedDocsAwb.DocList.length : 0})</span>
                       <div className="space-y-1.5 max-h-[250px] overflow-y-auto custom-scrollbar">
                         {(() => {
-                          const docs = Array.isArray(selectedDocsAwb.DocList) ? selectedDocsAwb.DocList : ['Invoice_Carga_Dass_Aerea.pdf', 'Packing_List_Aereo_UMBRO.pdf'];
+                          const docs = Array.isArray(selectedDocsAwb.DocList) ? selectedDocsAwb.DocList : [];
                           return docs.map((docName: string, idx: number) => (
                             <div 
                               key={idx} 
