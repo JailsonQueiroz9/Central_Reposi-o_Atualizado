@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { LayoutDashboard, FileText, Activity, MessageCircle, Settings, Menu, X, LogOut, Loader2, Download, Box, ClipboardList, CalendarClock, Layers, Shield, ChevronDown, ChevronRight, ShoppingCart, Scissors, FileUp, User, Radio } from 'lucide-react';
+import { LayoutDashboard, FileText, Activity, MessageCircle, Settings, Menu, X, LogOut, Loader2, Download, Box, ClipboardList, CalendarClock, Layers, Shield, ChevronDown, ChevronRight, ShoppingCart, Scissors, FileUp, User, Radio, History } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { api } from './lib/api';
 import { dataCache } from './lib/cache';
@@ -18,8 +18,9 @@ import Producao from './components/views/Producao';
 import ProgramacaoPCP from './components/views/ProgramacaoPCP';
 import UploadScreen from './components/UploadScreen';
 import StatusConexao from './components/views/StatusConexao';
+import Historico from './components/views/Historico';
 
-type ViewType = 'painel' | 'cadastro' | 'almox' | 'followup' | 'chat' | 'configuracao' | 'config_acesso' | 'config_perfil' | 'upload' | 'cadastroEntrega' | 'entregaDublagem' | 'disponivelCentral' | 'producao' | 'programacaoPCP' | 'status_conexao';
+type ViewType = 'painel' | 'cadastro' | 'almox' | 'followup' | 'chat' | 'configuracao' | 'config_acesso' | 'config_perfil' | 'upload' | 'cadastroEntrega' | 'entregaDublagem' | 'disponivelCentral' | 'producao' | 'programacaoPCP' | 'status_conexao' | 'historico';
 
 const menuItems = [
   { id: 'painel', label: 'Painel (Status)', icon: LayoutDashboard, perm: 'painel' },
@@ -28,6 +29,7 @@ const menuItems = [
   { id: 'cadastroEntrega', label: 'Entrega do Almox', icon: FileText, perm: 'cadastroEntrega' },
   { id: 'entregaDublagem', label: 'Entrega Dublagem', icon: Layers, perm: 'entregaDublagem' },
   { id: 'disponivelCentral', label: 'Disponível na Central', icon: Box, perm: 'disponivelCentral' },
+  { id: 'historico', label: 'Histórico', icon: History, perm: 'historico' },
   { id: 'producao', label: 'Produção', icon: ClipboardList, perm: 'producao' },
   { id: 'programacaoPCP', label: 'Programação PCP', icon: CalendarClock, perm: 'programacaoPCP' },
   { id: 'followup', label: 'Follow-up', icon: Activity, perm: 'followup' },
@@ -124,6 +126,7 @@ export default function App() {
       cadastroEntrega: parsed.cadastroEntrega !== undefined ? parsed.cadastroEntrega === true : baseCadastro,
       entregaDublagem: parsed.entregaDublagem !== undefined ? parsed.entregaDublagem === true : baseCadastro,
       disponivelCentral: parsed.disponivelCentral !== undefined ? parsed.disponivelCentral === true : baseCadastro,
+      historico: parsed.historico !== undefined ? parsed.historico === true : true,
       producao: parsed.producao !== false,
       programacaoPCP: parsed.programacaoPCP !== false,
       followup: parsed.followup !== false,
@@ -396,7 +399,7 @@ export default function App() {
   }, [permissions]);
 
   // Grupos e categorias para o Sidebar
-  const groupReposicao = useMemo(() => ['painel', 'cadastro', 'almox', 'cadastroEntrega', 'entregaDublagem', 'disponivelCentral'], []);
+  const groupReposicao = useMemo(() => ['painel', 'cadastro', 'almox', 'cadastroEntrega', 'entregaDublagem', 'disponivelCentral', 'historico'], []);
   const groupCorte = useMemo(() => ['producao', 'programacaoPCP'], []);
   const groupCompras = useMemo(() => ['followup'], []);
   const groupConfig = useMemo(() => ['config_acesso', 'config_perfil', 'chat', 'upload'], []);
@@ -507,8 +510,9 @@ export default function App() {
       case 'cadastro': return <Cadastro />;
       case 'almox': return <Almox />;
       case 'cadastroEntrega': return <CadastroEntrega currentUser={user} />;
-      case 'entregaDublagem': return <EntregaDublagem />;
-      case 'disponivelCentral': return <DisponivelCentral />;
+      case 'entregaDublagem': return <EntregaDublagem currentUser={user} />;
+      case 'disponivelCentral': return <DisponivelCentral currentUser={user} />;
+      case 'historico': return <Historico currentUser={user} />;
       case 'producao': return <Producao />;
       case 'programacaoPCP': return <ProgramacaoPCP setHeaderContent={setHeaderContent} />;
       case 'followup': return <FollowUp isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} currentUser={user} />;

@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { PackageCheck, Search, User, Clock, Briefcase, FileText, Activity, CheckCircle2, AlertCircle, Box, ScanLine } from 'lucide-react';
 import { api } from '@/lib/api';
 import { dataCache } from '@/lib/cache';
+import { registrarHistorico } from '@/lib/historico';
 
 export default function CadastroEntrega({ currentUser }: { currentUser?: any }) {
   const [loading, setLoading] = useState(false);
@@ -110,6 +111,23 @@ export default function CadastroEntrega({ currentUser }: { currentUser?: any }) 
 
       await api.post('updatePainelData', updateData);
       dataCache.invalidate('painelData');
+
+      // Registrar no histórico de movimentações (Aba Histórico)
+      await registrarHistorico({
+        Acao: 'REGISTRAR ENTREGA',
+        Ordem: selectedItem.Ordem || selectedItem.ordem,
+        Ord_Rep: selectedItem.Ord_Rep || selectedItem.ordRep,
+        N_Req: selectedItem['N°_Req'] || selectedItem.nReq,
+        Produto: selectedItem.Produtos || selectedItem.Produto,
+        Descricao: selectedItem['Descrição'] || selectedItem.descricao,
+        Qtd: selectedItem['Qtd.'] || selectedItem.quantidade,
+        Medida: selectedItem['Medida'],
+        TAM: selectedItem['TAM.'],
+        Destinatario_Nome: selectedItem.destinatario_nome || selectedItem.entrega_nome || selectedItem.Nome,
+        Destinatario_Setor: selectedItem.destinatario_setor || selectedItem.Setor,
+        Status_Anterior: selectedItem.Status || 'MPOK',
+        Status_Novo: 'ENTREGUE'
+      }, currentUser);
       
       setMessage({ type: 'success', text: 'Entrega realizada com sucesso!' });
       
@@ -157,6 +175,23 @@ export default function CadastroEntrega({ currentUser }: { currentUser?: any }) 
 
       await api.post('updatePainelData', updateData);
       dataCache.invalidate('painelData');
+
+      // Registrar no histórico de movimentações (Aba Histórico)
+      await registrarHistorico({
+        Acao: 'CONFIRMOU SEPARAÇÃO',
+        Ordem: selectedItem.Ordem || selectedItem.ordem,
+        Ord_Rep: selectedItem.Ord_Rep || selectedItem.ordRep,
+        N_Req: selectedItem['N°_Req'] || selectedItem.nReq,
+        Produto: selectedItem.Produtos || selectedItem.Produto,
+        Descricao: selectedItem['Descrição'] || selectedItem.descricao,
+        Qtd: selectedItem['Qtd.'] || selectedItem.quantidade,
+        Medida: selectedItem['Medida'],
+        TAM: selectedItem['TAM.'],
+        Destinatario_Nome: selectedItem.destinatario_nome || selectedItem.entrega_nome || selectedItem.Nome,
+        Destinatario_Setor: selectedItem.destinatario_setor || selectedItem.Setor,
+        Status_Anterior: selectedItem.Status || 'MPOK',
+        Status_Novo: 'DISPONÍVEL NA CENTRAL'
+      }, currentUser);
       
       setMessage({ type: 'success', text: `Separação confirmada! Status atualizado para "DISPONÍVEL NA CENTRAL".` });
       

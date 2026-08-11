@@ -18,8 +18,9 @@ import {
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { dataCache } from '@/lib/cache';
+import { registrarHistorico } from '@/lib/historico';
 
-export default function DisponivelCentral() {
+export default function DisponivelCentral({ currentUser }: { currentUser?: any }) {
   const [materiais, setMateriais] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -127,6 +128,23 @@ export default function DisponivelCentral() {
 
       await api.post('updatePainelData', updateData);
       dataCache.invalidate('painelData');
+
+      // Registrar no histórico de movimentações (Aba Histórico)
+      await registrarHistorico({
+        Acao: 'REGISTRAR ENTREGA',
+        Ordem: selectedItem.Ordem || selectedItem.ordem,
+        Ord_Rep: selectedItem.Ord_Rep || selectedItem.ordRep,
+        N_Req: selectedItem['N°_Req'] || selectedItem.nReq,
+        Produto: selectedItem.Produtos || selectedItem.Produto,
+        Descricao: selectedItem['Descrição'] || selectedItem.descricao,
+        Qtd: selectedItem['Qtd.'] || selectedItem.quantidade,
+        Medida: selectedItem['Medida'],
+        TAM: selectedItem['TAM.'],
+        Destinatario_Nome: selectedItem.destinatario_nome || selectedItem.entrega_nome || selectedItem.Nome,
+        Destinatario_Setor: selectedItem.destinatario_setor || selectedItem.Setor,
+        Status_Anterior: selectedItem.Status || 'DISPONÍVEL NA CENTRAL',
+        Status_Novo: 'ENTREGUE'
+      }, currentUser);
       
       setMessage({ type: 'success', text: `Material entregue com sucesso! Status atualizado para "ENTREGUE".` });
       

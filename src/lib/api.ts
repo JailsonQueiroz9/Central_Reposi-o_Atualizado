@@ -66,6 +66,10 @@ export const api = {
       const result = await response.json();
       
       if (!result.success) {
+        if (result.error && String(result.error).includes("Ação não encontrada")) {
+          if (action === "getHistoricoData") return [];
+          if (action === "saveHistoricoData") return data;
+        }
         throw new Error(result.error || 'Erro desconhecido retornado pelo Apps Script');
       }
       

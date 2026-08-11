@@ -2188,7 +2188,7 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
       </div>
 
       {/* Bento Grid de Indicadores de AWB */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center gap-4">
           <div className="p-3 bg-slate-100 rounded-lg text-slate-700">
             <Layers size={20} />
@@ -2196,6 +2196,16 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
           <div>
             <p className="text-xs text-gray-400 font-bold uppercase tracking-wider">Total Embarques</p>
             <h3 className="text-2xl font-bold text-slate-800 font-sans">{awbList.length}</h3>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex items-center gap-4">
+          <div className="p-3 bg-amber-100/70 rounded-lg text-amber-600">
+            <Box size={20} />
+          </div>
+          <div>
+            <p className="text-xs text-gray-400 font-bold uppercase tracking-wider">Coletado</p>
+            <h3 className="text-2xl font-bold text-amber-700 font-sans">{awbList.filter(item => item.Status === 'COLETADO').length}</h3>
           </div>
         </div>
 
@@ -2253,6 +2263,7 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
               className="bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer text-gray-700"
             >
               <option value="ALL">Todos os Status</option>
+              <option value="COLETADO">COLETADO</option>
               <option value="EM TRÂNSITO">EM TRÂNSITO</option>
               <option value="DISPONIVEL">DISPONÍVEL</option>
               <option value="AGUARDANDO">AGUARDANDO</option>
@@ -2321,6 +2332,7 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
                 }).map((item) => {
                   const statusColor = 
                     item.Status === 'DISPONIVEL' || item.Status === 'DISPONÍVEL' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
+                    item.Status === 'COLETADO' ? 'bg-amber-50 text-amber-700 border-amber-200' :
                     item.Status === 'EM TRÂNSITO' ? 'bg-blue-50 text-blue-700 border-blue-100' :
                     item.Status === 'AGUARDANDO' ? 'bg-sky-50 text-sky-800 border-sky-200' :
                     'bg-red-50 text-red-700 border-red-100';
@@ -2520,6 +2532,7 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
                             onChange={(e) => setAwbForm({ ...awbForm, Status: e.target.value })}
                             className="w-full bg-slate-50 text-slate-800 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100 transition-all cursor-pointer font-bold appearance-none"
                           >
+                            <option value="COLETADO" style={{ color: '#0f172a', backgroundColor: '#ffffff' }} className="text-slate-900 bg-white font-semibold">COLETADO 📦</option>
                             <option value="EM TRÂNSITO" style={{ color: '#0f172a', backgroundColor: '#ffffff' }} className="text-slate-900 bg-white font-semibold">EM TRÂNSITO ✈️</option>
                             <option value="DISPONIVEL" style={{ color: '#0f172a', backgroundColor: '#ffffff' }} className="text-slate-900 bg-white font-semibold">DISPONÍVEL ✅</option>
                             <option value="AGUARDANDO" style={{ color: '#0f172a', backgroundColor: '#ffffff' }} className="text-slate-900 bg-white font-semibold">AGUARDANDO ⏳</option>

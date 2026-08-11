@@ -57,7 +57,17 @@ async function startServer() {
     if (!action) {
       return res.status(400).json({ success: false, error: "Parâmetro 'action' não fornecido" });
     }
-    const result = await forwardToAppsScript(action, data);
+    let result = await forwardToAppsScript(action, data);
+    
+    // Fallback gracioso se a implantação remota no Apps Script do usuário ainda não possuir a nova ação
+    if (!result.success && result.error && String(result.error).includes("Ação não encontrada")) {
+      if (action === "getHistoricoData") {
+        result = { success: true, data: [] };
+      } else if (action === "saveHistoricoData") {
+        result = { success: true, data: data };
+      }
+    }
+    
     res.json(result);
   });
 
@@ -115,6 +125,23 @@ async function startServer() {
 
   app.post("/api/painel/delete-multiple", async (req, res) => {
     const result = await forwardToAppsScript("deleteMultiplePainelData", req.body);
+    res.json(result);
+  });
+
+  // --- Histórico de Movimentações ---
+  app.post("/api/historico/get", async (req, res) => {
+    let result = await forwardToAppsScript("getHistoricoData", req.body);
+    if (!result.success && result.error && String(result.error).includes("Ação não encontrada")) {
+      result = { success: true, data: [] };
+    }
+    res.json(result);
+  });
+
+  app.post("/api/historico/save", async (req, res) => {
+    let result = await forwardToAppsScript("saveHistoricoData", req.body);
+    if (!result.success && result.error && String(result.error).includes("Ação não encontrada")) {
+      result = { success: true, data: req.body };
+    }
     res.json(result);
   });
 

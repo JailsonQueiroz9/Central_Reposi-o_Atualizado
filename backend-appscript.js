@@ -122,6 +122,12 @@ function doPost(e) {
       case 'importSheetData':
         result = importSheetData(data);
         break;
+      case 'getHistoricoData':
+        result = getSheetData('Histórico');
+        break;
+      case 'saveHistoricoData':
+        result = saveHistoricoData(data);
+        break;
       default:
         throw new Error("Ação não encontrada: " + action);
     }
@@ -1539,5 +1545,13 @@ function importSheetData(data) {
   
   sheet.getRange(1, 1, writeValues.length, headers.length).setValues(writeValues);
   return { success: true, count: rows.length };
+}
+
+function saveHistoricoData(data) {
+  data = data || {};
+  if (!data.id && !data.ID) {
+    data.id = Utilities.getUuid();
+  }
+  return appendRow('Histórico', data);
 }
 

@@ -67,6 +67,7 @@ const MODULES = [
   { key: 'cadastroEntrega', label: 'Ent. Almox' },
   { key: 'entregaDublagem', label: 'Ent. Dublagem' },
   { key: 'disponivelCentral', label: 'Disp. Central' },
+  { key: 'historico', label: 'Histórico' },
   { key: 'producao', label: 'Produção' },
   { key: 'programacaoPCP', label: 'Prog. PCP' },
   { key: 'followup', label: 'Follow-up' },
