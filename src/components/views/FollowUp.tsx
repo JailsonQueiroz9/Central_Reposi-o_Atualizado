@@ -920,9 +920,9 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
       Status: 'EM TRÂNSITO',
       Material: '',
       Observacao: '',
-      Rastreio: 'https://www.latamcargo.com/pt/trackshipment?docNumber=&docPrefix=&soType=SO',
+      Rastreio: '',
       DocList: [],
-      Transportadora: 'LATAM',
+      Transportadora: '',
       FileBinaries: {},
       FileBinariesInfo: {},
       DriveUrls: {},
@@ -2302,11 +2302,11 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
               ) : awbList.filter(item => {
                 const term = searchAwb.trim().toLowerCase();
                 const matchSearch = !term || 
-                  (item.Marca || '').toLowerCase().includes(term) ||
-                  (item.Fornecedor || '').toLowerCase().includes(term) ||
-                  (item.Awb || '').toLowerCase().includes(term) ||
-                  (item.NFs || '').toLowerCase().includes(term) ||
-                  (item.Material || '').toLowerCase().includes(term);
+                  String(item.Marca || '').toLowerCase().includes(term) ||
+                  String(item.Fornecedor || '').toLowerCase().includes(term) ||
+                  String(item.Awb || '').toLowerCase().includes(term) ||
+                  String(item.NFs || '').toLowerCase().includes(term) ||
+                  String(item.Material || '').toLowerCase().includes(term);
                 
                 const matchStatus = awbStatusFilter === 'ALL' || item.Status === awbStatusFilter;
                 return matchSearch && matchStatus;
@@ -2321,11 +2321,11 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
                 awbList.filter(item => {
                   const term = searchAwb.trim().toLowerCase();
                   const matchSearch = !term || 
-                    (item.Marca || '').toLowerCase().includes(term) ||
-                    (item.Fornecedor || '').toLowerCase().includes(term) ||
-                    (item.Awb || '').toLowerCase().includes(term) ||
-                    (item.NFs || '').toLowerCase().includes(term) ||
-                    (item.Material || '').toLowerCase().includes(term);
+                    String(item.Marca || '').toLowerCase().includes(term) ||
+                    String(item.Fornecedor || '').toLowerCase().includes(term) ||
+                    String(item.Awb || '').toLowerCase().includes(term) ||
+                    String(item.NFs || '').toLowerCase().includes(term) ||
+                    String(item.Material || '').toLowerCase().includes(term);
                   
                   const matchStatus = awbStatusFilter === 'ALL' || item.Status === awbStatusFilter;
                   return matchSearch && matchStatus;
@@ -2557,11 +2557,13 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
                         <label className="block text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Transportadora</label>
                         <div className="relative">
                           <select
-                            value={awbForm.Transportadora || 'LATAM'}
+                            value={awbForm.Transportadora || ''}
                             onChange={(e) => {
                               const val = e.target.value;
-                              let trackingUrl = 'https://www.latamcargo.com/pt/trackshipment?docNumber=&docPrefix=&soType=SO';
-                              if (val === 'GOL') {
+                              let trackingUrl = '';
+                              if (val === 'LATAM') {
+                                trackingUrl = 'https://www.latamcargo.com/pt/trackshipment?docNumber=&docPrefix=&soType=SO';
+                              } else if (val === 'GOL') {
                                 trackingUrl = 'https://servicos.gollog.com.br/app/site/tracking';
                               } else if (val === 'AZUL') {
                                 trackingUrl = 'https://www.azullogistica.com.br/Rastreio';
@@ -2574,6 +2576,7 @@ export default function FollowUp({ isSidebarOpen = true, setIsSidebarOpen, curre
                             }}
                             className="w-full bg-slate-50 text-slate-800 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100 transition-all cursor-pointer font-bold appearance-none"
                           >
+                            <option value="" style={{ color: '#0f172a', backgroundColor: '#ffffff' }} className="text-slate-900 bg-white font-semibold"></option>
                             <option value="LATAM" style={{ color: '#0f172a', backgroundColor: '#ffffff' }} className="text-slate-900 bg-white font-semibold">LATAM CARGO</option>
                             <option value="GOL" style={{ color: '#0f172a', backgroundColor: '#ffffff' }} className="text-slate-900 bg-white font-semibold">GOLLOG (GOL)</option>
                             <option value="AZUL" style={{ color: '#0f172a', backgroundColor: '#ffffff' }} className="text-slate-900 bg-white font-semibold">AZUL LOGÍSTICA</option>
