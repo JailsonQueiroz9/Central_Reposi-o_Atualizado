@@ -1017,7 +1017,7 @@ export default function Cadastro() {
                       >
                         <option value=""></option>
                         <option value="PAR">PAR</option>
-                        <option value="UN">UN</option>
+                        <option value="UND">UND</option>
                         <option value="KG">KG</option>
                         <option value="M">M</option>
                         <option value="M²">M²</option>
