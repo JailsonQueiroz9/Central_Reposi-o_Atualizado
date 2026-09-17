@@ -1022,6 +1022,7 @@ export default function Cadastro() {
                         <option value="M">M</option>
                         <option value="M²">M²</option>
                         <option value="MIL">MIL</option>
+                        <option value="FL">FL</option>
                       </select>
                     </td>
                     <td className="p-1 border-r border-red-900/10">
