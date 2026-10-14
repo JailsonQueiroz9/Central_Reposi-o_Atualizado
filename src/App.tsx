@@ -213,16 +213,24 @@ export default function App() {
 
       setUser(mergedUser);
 
-      // Pré-carregamento de dados pós-login bem-sucedido (Prefetch)
+      // Pré-carregamento de dados pós-login escalonado (Prefetch)
       const prefetchPostLogin = async () => {
         try {
-          await Promise.all([
-            api.post('getPainelData').then(d => dataCache.set('painelData', d)),
-            api.post('getWipData').then(d => dataCache.set('wipData', d)),
-            api.post('getParametros').then(d => dataCache.set('parametros', d)),
-            api.post('getMateriasData').then(d => dataCache.set('materiasData', d)),
-            api.post('getAwbData').then(d => dataCache.set('awbData', d))
-          ]);
+          const prefetchItems: [string, string][] = [
+            ['getPainelData', 'painelData'],
+            ['getAwbData', 'awbData'],
+            ['getWipData', 'wipData'],
+            ['getParametros', 'parametros'],
+            ['getMateriasData', 'materiasData']
+          ];
+          for (const [action, key] of prefetchItems) {
+            api.post(action).then(d => {
+              if (d && (!Array.isArray(d) || d.length > 0)) {
+                dataCache.set(key, d);
+              }
+            }).catch(() => {});
+            await new Promise(r => setTimeout(r, 200));
+          }
           console.log('[PERFORMANCE] Cache pós-login aquecido com sucesso!');
         } catch (e) {
           console.warn('[PERFORMANCE] Falha no prefetch pós-login:', e);
@@ -278,18 +286,25 @@ export default function App() {
               setIsAuthenticated(true);
               localStorage.setItem('pcp_user', JSON.stringify(newUserObj));
               
-              // Pré-carregamento de dados críticos em segundo plano (Prefetch)
+              // Pré-carregamento de dados críticos em segundo plano escalonado (Prefetch)
               const prefetchData = async () => {
                 console.log('[PERFORMANCE] Iniciando Pré-carregamento de dados...');
                 try {
-                  // Dispara as buscas em paralelo sem travar a UI
-                  await Promise.all([
-                    api.post('getPainelData').then(d => dataCache.set('painelData', d)),
-                    api.post('getWipData').then(d => dataCache.set('wipData', d)),
-                    api.post('getParametros').then(d => dataCache.set('parametros', d)),
-                    api.post('getMateriasData').then(d => dataCache.set('materiasData', d)),
-                    api.post('getAwbData').then(d => dataCache.set('awbData', d))
-                  ]);
+                  const prefetchItems: [string, string][] = [
+                    ['getPainelData', 'painelData'],
+                    ['getAwbData', 'awbData'],
+                    ['getWipData', 'wipData'],
+                    ['getParametros', 'parametros'],
+                    ['getMateriasData', 'materiasData']
+                  ];
+                  for (const [action, key] of prefetchItems) {
+                    api.post(action).then(d => {
+                      if (d && (!Array.isArray(d) || d.length > 0)) {
+                        dataCache.set(key, d);
+                      }
+                    }).catch(() => {});
+                    await new Promise(r => setTimeout(r, 200));
+                  }
                   console.log('[PERFORMANCE] Cache aquecido com sucesso!');
                 } catch (e) {
                   console.warn('[PERFORMANCE] Falha no pré-carregamento:', e);

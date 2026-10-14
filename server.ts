@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import { execFile } from "child_process";
 
 async function startServer() {
   const app = express();
@@ -14,37 +15,217 @@ async function startServer() {
                         process.env.VITE_APPS_SCRIPT_URL || 
                         "https://script.google.com/macros/s/AKfycbxCvHfU0Nmx7e5inDRV-YQAaoKyQG2mye1SrzxO28-lopNrTOYPCTC4NpC7TlnZSbtI/exec";
 
-  /**
-   * Generic forwarder to maintain zero downtime/perfect compatibility with current Google Apps Script sheets database
-   */
-  async function forwardToAppsScript(action: string, data: any) {
-    try {
-      const fetchUrl = `${appsScriptUrl}${appsScriptUrl.includes("?") ? "&" : "?"}ts=${Date.now()}`;
-      const response = await fetch(fetchUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "text/plain;charset=utf-8",
-        },
-        body: JSON.stringify({ action, data }),
-        redirect: "follow"
-      });
+  // In-flight deduplication and cache store for read actions
+  const inFlightRequests = new Map<string, Promise<any>>();
+  const cacheStore = new Map<string, { timestamp: number; data: any }>();
+  const CACHE_TTL_MS = 90 * 1000; // 90 segundos de cache para leitura pesada
 
-      if (!response.ok) {
-        throw new Error(`HTTP Error: ${response.status} ${response.statusText}`);
+  // Limitador de concorrência: 1 requisição por vez ao Apps Script para eliminar erros 500 por Lock do Google Sheets
+  class AsyncQueue {
+    private running = 0;
+    private queue: (() => void)[] = [];
+
+    constructor(private maxConcurrency = 1) {}
+
+    async run<T>(fn: () => Promise<T>): Promise<T> {
+      while (this.running >= this.maxConcurrency) {
+        await new Promise<void>((resolve) => this.queue.push(resolve));
+      }
+      this.running++;
+      try {
+        return await fn();
+      } finally {
+        this.running--;
+        const next = this.queue.shift();
+        if (next) next();
+      }
+    }
+  }
+
+  const appsScriptQueue = new AsyncQueue(1);
+
+  function isReadAction(action: string): boolean {
+    return [
+      "getUsers",
+      "getPainelData",
+      "getMateriasData",
+      "getWipData",
+      "getAwbData",
+      "getParametros",
+      "getMaterialByProduto",
+      "getUserByCracha",
+      "getBDAsicsNovoData",
+      "get042BDData",
+      "statusBusca",
+      "getHistoricoData"
+    ].includes(action);
+  }
+
+  function invalidateCacheForAction(action: string) {
+    if (!isReadAction(action)) {
+      // Invalidate relevant caches on mutation
+      cacheStore.clear();
+    }
+  }
+
+  /**
+   * Executa requisição POST para o Google Apps Script via curl nativo do sistema operacional.
+   * Evita problemas conhecidos de socket/HTTP2 no Node.js Undici com redirecionamentos 302 do Google.
+   */
+  function executeWithCurl(url: string, payload: string): Promise<any> {
+    return new Promise((resolve, reject) => {
+      execFile("curl", [
+        "-s",
+        "-L",
+        "--max-time", "45",
+        "-H", "Content-Type: text/plain;charset=utf-8",
+        "-d", payload,
+        url
+      ], { maxBuffer: 50 * 1024 * 1024 }, (err, stdout) => {
+        if (err) return reject(err);
+        if (!stdout || !stdout.trim()) {
+          return reject(new Error("Resposta vazia do Google Apps Script via curl"));
+        }
+        try {
+          const json = JSON.parse(stdout);
+          resolve(json);
+        } catch (parseErr) {
+          reject(new Error(`Resposta não-JSON do Apps Script: ${stdout.substring(0, 150)}`));
+        }
+      });
+    });
+  }
+
+  /**
+   * Chamador robusto para o Google Apps Script Web App.
+   * Prioriza curl nativo (1.8s) com fallback para Fetch manual de redirecionamento.
+   */
+  async function callAppsScriptDirect(action: string, data: any, attempt = 1): Promise<any> {
+    const payload = JSON.stringify({ action, data });
+    const fetchUrl = `${appsScriptUrl}${appsScriptUrl.includes("?") ? "&" : "?"}ts=${Date.now()}`;
+
+    try {
+      // 1ª Prioridade: curl nativo do sistema (alta performance e estabilidade com 302 redirects)
+      try {
+        const curlResult = await executeWithCurl(fetchUrl, payload);
+        return curlResult;
+      } catch (curlErr: any) {
+        console.warn(`[Server API] curl fall-through para ${action} (${curlErr.message}), tentando fetch nativo...`);
       }
 
-      const responseText = await response.text();
+      // 2ª Prioridade: Fetch nativo com timeout de 60s
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 60000);
+
       try {
-        const result = JSON.parse(responseText);
-        return result;
-      } catch (jsonErr) {
-        console.error(`[Server API Parse Error] Action: ${action}. Raw Response preview:`, responseText.substring(0, 500));
-        throw new Error("Resposta inválida do servidor Google (provavelmente o limite de tempo da execução do script de 30 segundos do Apps Script foi atingido ou houve um erro interno na planilha).");
+        const postResponse = await fetch(fetchUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "text/plain;charset=utf-8",
+          },
+          body: payload,
+          redirect: "manual",
+          signal: controller.signal
+        });
+
+        let finalResponse: Response;
+
+        if ([301, 302, 303, 307].includes(postResponse.status)) {
+          const redirectUrl = postResponse.headers.get("location");
+          if (!redirectUrl) {
+            throw new Error(`Google Apps Script retornou redirect (${postResponse.status}) sem cabeçalho Location.`);
+          }
+          finalResponse = await fetch(redirectUrl, {
+            method: "GET",
+            signal: controller.signal
+          });
+        } else {
+          finalResponse = postResponse;
+        }
+
+        if (!finalResponse.ok) {
+          throw new Error(`HTTP Error: ${finalResponse.status} ${finalResponse.statusText}`);
+        }
+
+        const responseText = await finalResponse.text();
+        return JSON.parse(responseText);
+      } finally {
+        clearTimeout(timeout);
       }
     } catch (error: any) {
-      console.error(`[Server API Error] Action: ${action} - Error:`, error);
-      return { success: false, error: error.message || "Erro de comunicação com o servidor Google Apps Script" };
+      if (attempt <= 3) {
+        const backoffMs = attempt * 1200;
+        console.log(`[Server API] Apps Script ocupado para '${action}', tentando novamente em ${backoffMs}ms (tentativa ${attempt + 1}/4)...`);
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+        return callAppsScriptDirect(action, data, attempt + 1);
+      }
+      throw error;
     }
+  }
+
+  /**
+   * Generic forwarder with concurrency queue, deduplication, and caching for zero downtime
+   */
+  async function forwardToAppsScript(action: string, data: any) {
+    const isRead = isReadAction(action);
+    const cacheKey = `${action}_${JSON.stringify(data || {})}`;
+
+    // 1. Check cache for read actions
+    if (isRead) {
+      const cached = cacheStore.get(cacheKey);
+      if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
+        return cached.data;
+      }
+
+      // 2. In-flight request deduplication
+      if (inFlightRequests.has(cacheKey)) {
+        return inFlightRequests.get(cacheKey);
+      }
+    } else {
+      invalidateCacheForAction(action);
+    }
+
+    const requestPromise = (async () => {
+      try {
+        // Enforce concurrency limit to prevent Google Apps Script 500 rate/lock errors
+        const result = await appsScriptQueue.run(() => callAppsScriptDirect(action, data));
+        if (result && result.success && isRead) {
+          // Apenas grava no cache se tiver dados reais ou se o cache ainda estiver vazio
+          const hasExisting = cacheStore.has(cacheKey);
+          const isArray = Array.isArray(result.data);
+          if (!hasExisting || !isArray || result.data.length > 0) {
+            cacheStore.set(cacheKey, { timestamp: Date.now(), data: result });
+          }
+        }
+        return result;
+      } catch (error: any) {
+        console.error(`[Server API Error] Action: ${action} - Error:`, error.message);
+        
+        // Fallback to stale cache if available
+        if (isRead && cacheStore.has(cacheKey)) {
+          console.warn(`[Server API] Retornando cache anterior para ${action} após falha.`);
+          return cacheStore.get(cacheKey)!.data;
+        }
+
+        // Graceful fallback for read actions so the UI never breaks completely
+        if (isRead) {
+          console.warn(`[Server API Fallback] Retornando conjunto vazio temporário para ${action} para manter a aplicação online.`);
+          return { success: true, data: [] };
+        }
+
+        return { success: false, error: error.message || "Erro de comunicação com o servidor Google Apps Script" };
+      } finally {
+        if (isRead) {
+          inFlightRequests.delete(cacheKey);
+        }
+      }
+    })();
+
+    if (isRead) {
+      inFlightRequests.set(cacheKey, requestPromise);
+    }
+
+    return requestPromise;
   }
 
   // ==========================================

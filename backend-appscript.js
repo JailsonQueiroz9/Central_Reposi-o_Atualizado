@@ -1,4 +1,9 @@
 function doPost(e) {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(30000); // Aguarda até 30s se houver outra requisição em execução simultânea
+  } catch (lockErr) {}
+
   try {
     var body = JSON.parse(e.postData.contents);
     var action = body.action || '';
@@ -138,6 +143,10 @@ function doPost(e) {
   } catch (error) {
     return ContentService.createTextOutput(JSON.stringify({ success: false, error: error.message }))
       .setMimeType(ContentService.MimeType.JSON);
+  } finally {
+    try {
+      lock.releaseLock();
+    } catch (e) {}
   }
 }
 
