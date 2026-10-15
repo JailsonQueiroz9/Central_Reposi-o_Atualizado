@@ -491,7 +491,7 @@ export default function App() {
 
   if (!isFullyReady) {
     return (
-      <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-950 gap-4 text-white">
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-white gap-4 text-slate-800">
         <div className="relative">
           <Loader2 className="animate-spin text-orange-500" size={56} />
           <div className="absolute inset-0 flex items-center justify-center">
@@ -499,8 +499,8 @@ export default function App() {
           </div>
         </div>
         <div className="flex flex-col items-center gap-1">
-          <p className="text-white font-bold text-lg tracking-widest">PCP</p>
-          <p className="text-gray-400 font-medium animate-pulse text-sm">Sincronizando ambiente e permissões...</p>
+          <p className="text-slate-900 font-bold text-lg tracking-widest">PCP</p>
+          <p className="text-slate-500 font-medium animate-pulse text-sm">Sincronizando ambiente e permissões...</p>
         </div>
       </div>
     );
@@ -568,7 +568,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen w-full bg-slate-950 text-white overflow-hidden">
+    <div className="flex h-screen w-full bg-white text-slate-800 overflow-hidden">
       {/* Mobile Sidebar Overlay */}
       <AnimatePresence>
         {isSidebarOpen && (
@@ -849,13 +849,13 @@ export default function App() {
       </motion.aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col min-w-0 h-full bg-slate-950">
+      <main className="flex-1 flex flex-col min-w-0 h-full bg-white">
         {/* Top Header */}
-        <header className={`bg-slate-900 border-b border-slate-800 flex items-center px-4 md:px-6 shadow-sm z-10 print:hidden transition-all duration-300 ${activeView === 'programacaoPCP' ? 'py-4 min-h-[5.5rem]' : 'h-14'}`}>
+        <header className={`bg-white border-b border-slate-200 flex items-center px-4 md:px-6 shadow-sm z-10 print:hidden transition-all duration-300 ${activeView === 'programacaoPCP' ? 'py-4 min-h-[5.5rem]' : 'h-14'}`}>
           <div className="flex items-center gap-4 w-full">
             <button 
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="p-2 hover:bg-slate-800 rounded-lg text-gray-400 transition-colors flex-shrink-0"
+              className="p-2 hover:bg-slate-100 rounded-lg text-slate-600 hover:text-slate-900 transition-colors flex-shrink-0"
             >
               <Menu size={20} />
             </button>
@@ -864,7 +864,7 @@ export default function App() {
                 {headerContent}
               </div>
             ) : (
-              <div className="ml-2 font-semibold text-white capitalize">
+              <div className="ml-2 font-bold text-slate-800 capitalize">
                 {menuItems.find(m => m.id === activeView)?.label || configItems.find(m => m.id === activeView)?.label}
               </div>
             )}
