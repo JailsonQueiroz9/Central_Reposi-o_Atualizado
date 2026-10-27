@@ -908,7 +908,7 @@ export default function Cadastro() {
         <div className="flex flex-col md:flex-row bg-[#E5D1C1] overflow-hidden shadow-xl">
           <div className="w-full md:w-48 bg-orange-200/60 p-4 text-xs md:text-sm font-bold text-red-900 uppercase flex flex-row md:flex-col justify-between border-b md:border-b-0 md:border-r border-red-900/10 gap-2">
             <div className="flex flex-col gap-1 flex-1">
-              <span className="text-[10px] md:text-xs">ORDEM PAI</span>
+              <span className="text-[10px] md:text-xs">ORDEM PAI OU LOTE</span>
               <input
                 className="bg-white/50 text-sm md:text-base p-1.5 md:p-2 outline-none focus:bg-white transition-colors rounded-sm font-medium text-gray-900 w-full"
                 value={formData.ordem.pai}
